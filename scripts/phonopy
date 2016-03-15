@@ -42,8 +42,9 @@ import phonopy.file_IO as file_IO
 from phonopy.cui.settings import Settings, PhonopyConfParser
 from phonopy.cui.show_symmetry import check_symmetry
 from phonopy.cui.phonopy_argparse import get_parser
+# gcgs edit - 18.33 03/15/2016
 from phonopy.units import (Wien2kToTHz, AbinitToTHz, PwscfToTHz, ElkToTHz,
-                           SiestaToTHz, VaspToTHz, Hartree, Bohr)
+                           LMTOToTHz, SiestaToTHz, VaspToTHz, Hartree, Bohr)
 from phonopy.structure.cells import print_cell, determinant
 from phonopy.structure.atoms import atom_data, symbol_map
 from phonopy.interface import create_FORCE_SETS, read_crystal_structure
@@ -214,6 +215,10 @@ if options.loglevel is not None:
 # wien2k        : Ry,      au(=borh), AMU,         mRy/au
 # abinit        : hartree, au,        AMU,         eV/Angstrom
 # elk           : hartree, au,        AMU,         hartree/au
+
+# lmto          : Ry,      au,        AMU,         mRy/au 
+# gcgs edit - 18.01 15/03/2016
+
 # pwscf         : Ry,      au,        AMU,         Ry/au
 # siesta        : eV,      au,        AMU,         eV/Angstroem
 #
@@ -236,6 +241,12 @@ elif options.elk_mode:
     interface_mode = 'elk'
     from phonopy.interface.elk import write_supercells_with_displacements
     factor = ElkToTHz
+    nac_factor = 1.0
+# gcgs edit - 18.02 15/03/2016
+elif options.lmto_mode:
+    interface_mode = 'lmto'
+    from phonopy.interface.lmto import write_supercells_with_displacements
+    factor = LMTOToTHz
     nac_factor = 1.0
 elif options.siesta_mode:
     interface_mode = 'siesta'
@@ -358,6 +369,8 @@ if settings.get_displacement_distance() is None:
     if (interface_mode == 'wien2k' or
         interface_mode == 'abinit' or
         interface_mode == 'elk' or
+        # gcgs edit - 18.02 15/03/2016
+        interface_mode == 'lmto' or
         interface_mode == 'pwscf' or
         interface_mode == 'siesta'):
         displacement_distance = 0.02
@@ -506,6 +519,13 @@ if run_mode == 'displacements':
         write_supercells_with_displacements(supercell,
                                             cells_with_disps,
                                             sp_filenames)
+   # gcgs edit - 18.03 15/03/2016
+    elif interface_mode == 'lmto':
+        ext = optional_structure_file_information.split('.')[-1]
+        write_supercells_with_displacements(supercell, 
+                                            cells_with_disps, 
+                                            ext)
+
     elif interface_mode == 'siesta':
         atypes = optional_structure_file_information[1]
         write_supercells_with_displacements(supercell,

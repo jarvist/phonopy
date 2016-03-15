@@ -65,5 +65,7 @@ Wien2kToTHz = sqrt(Rydberg/1000*EV/AMU)/(Bohr*1e-10)/(2*pi)/1e12 # [THz] 3.44595
 AbinitToTHz = sqrt(EV/(AMU*Bohr))/Angstrom/(2*pi)/1e12 # [THz] 21.49068
 PwscfToTHz = sqrt(Rydberg*EV/AMU)/(Bohr*1e-10)/(2*pi)/1e12 # [THz] 108.97077
 ElkToTHz = sqrt(Hartree*EV/AMU)/(Bohr*1e-10)/(2*pi)/1e12 # [THz] 154.10794
+# gcgs edit - 18.26 15/03/2016
+LMTOToTHz = sqrt(Rydberg*EV/AMU)/(Bohr*1e-10)/(2*pi)/1e12 # [THz] 3.44595837 
 SiestaToTHz = sqrt(EV/(AMU*Bohr))/Angstrom/(2*pi)/1e12 # [THz] 21.49068
 EVAngstromToGPa = EV * 1e21

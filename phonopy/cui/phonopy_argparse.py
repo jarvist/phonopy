@@ -87,6 +87,8 @@ def get_parser():
         is_wien2k_p1=False,
         irreps_qpoint=None,
         lapack_solver=False,
+        # gcgs edit - 17.58 15/03/2016
+        lmto_mode=False,
         loglevel=None,
         masses=None,
         mesh_numbers=None,
@@ -223,6 +225,10 @@ def get_parser():
         action="store_true",
         help=("Show irreps of little co-group (or point-group of "
               "wave vector q) instead of little group"))
+    # gcgs edit - 17.58 15/03/2016
+    parser.add_option(
+        "--lmto", dest="lmto_mode", action="store_true",
+        help="Invoke LMTO mode")
     parser.add_option(
         "--loglevel", dest="loglevel", type="int",
         help="Log level")

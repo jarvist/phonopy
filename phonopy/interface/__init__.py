@@ -83,6 +83,17 @@ def read_crystal_structure(filename=None,
         unitcell, sp_filenames = read_elk(unitcell_filename)
         return unitcell, (unitcell_filename, sp_filenames)
 
+    if interface_mode == 'elk':
+        from phonopy.interface.elk import read_elk
+        unitcell, sp_filenames = read_elk(unitcell_filename)
+        return unitcell, (unitcell_filename, sp_filenames)
+
+    # gcgs edit - 18.18 15/03/2016
+    if interface_mode == 'lmto':
+        from phonopy.interface.lmto import read_lmto
+        unitcell = read_lmto(unitcell_filename)
+        return unitcell, unitcell_filename
+
     if interface_mode == 'siesta':
         from phonopy.interface.siesta import read_siesta
         unitcell, atypes = read_siesta(unitcell_filename)
@@ -101,6 +112,9 @@ def get_default_cell_filename(interface_mode, yaml_mode):
         return "case.struct"
     if interface_mode == 'elk':
         return "elk.in"
+    # gcgs edit - 18.19 15/03/2016
+    if interface_mode == 'lmto':
+        return "site"
     if interface_mode == 'siesta':
         return "input.fdf" 
 
@@ -112,6 +126,8 @@ def create_FORCE_SETS(interface_mode,
     if (interface_mode == 'vasp' or
         interface_mode == 'abinit' or
         interface_mode == 'elk' or
+        # gcgs edit - 18.20 15/03/2016
+        interface_mode == 'lmto' or
         interface_mode == 'pwscf' or
         interface_mode == 'siesta'):
         displacements = parse_disp_yaml(filename='disp.yaml')
@@ -167,6 +183,10 @@ def get_force_sets(interface_mode, num_atoms, force_filenames):
         force_sets = parse_set_of_forces(num_atoms, force_filenames)
     elif interface_mode == 'elk':
         from phonopy.interface.elk import parse_set_of_forces
+        force_sets = parse_set_of_forces(num_atoms, force_filenames)
+    # gcgs edit - 18.21 15/03/2016
+    elif interface_mode == 'lmto':
+        from phonopy.interface.lmto import parse_set_of_forces
         force_sets = parse_set_of_forces(num_atoms, force_filenames)
     elif interface_mode == 'siesta':
         from phonopy.interface.siesta import parse_set_of_forces
