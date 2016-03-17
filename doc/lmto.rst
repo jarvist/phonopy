@@ -1,20 +1,19 @@
 .. _lmto_interface:
 
-LMTO & phonopy calculation
+LM & phonopy calculation
 =========================================
 
 This is a tutorial for the interface between phonopy & Mark van
 Schilfgaarde's electronic structure codes http://www.lmsuite.org/.
 
-Supported LMTO tokens
+Supported LM tokens
 ---------------------------
 
-The interface uses LM suite site files which have only a small amount
-of information relating to the calculation. At present, the interface
-requires the use of fractional co-ordinates. Since phonopy is capable
-of handling cartesian co-ordinates such an extension will be
-implemented soon. The only other feature of the site file which I plan
-to implement are the relaxation flags. 
+The interface uses LM suite site files. Such files have only a small amount
+of information within them relating to the calculation. At present,
+the interface requires the use of fractional co-ordinates. Since
+phonopy is capable of handling cartesian co-ordinates such an
+extension will be realised soon. 
 
 ::
 
@@ -23,48 +22,58 @@ to implement are the relaxation flags.
 How to run
 ----------
 
-A procedure of Elk-phonopy calculation is as follows:
+The following is a walkthrough for a phonopy calculation with LM:
 
-1) Read an Elk input file and create supercells with
-   :ref:`elk_mode` option::
+1) Create a site file with the LM suite supercell maker, *lmscell*. For
+   instance, use this command,
 
-   % phonopy --elk -d --dim="2 2 2" -c elk-unitcell.in
+   ::
 
-   In this example, 2x2x2 supercells are created. ``supercell.in`` and
-   ``supercell-xxx.in`` (``xxx`` are numbers) give the perfect
-   supercell and supercells with displacements, respectively. In these
-   supercell files, lines only relevant to crystal structures are
-   generated. ``disp.yaml`` is also created. This file contains
-   information on displacements. Perhaps the supercell files of
-   ``supercell-xxx.in`` are stored in ``disp-xxx`` directories as
-   ``elk.in``, respectively, then Elk calculations are executed in
-   these directories.
+      % echo 'm 1 0 0 0 1 0 0 0 1' | lmscell --wsitex ext
 
-2) Calculate forces on atoms in the supercells with
-   displacements. Calculation specification tags have to be added to
-   each ``elk.in`` file. Crystal structure is not allowed to
-   relaxed in the force calculations, because atomic forces induced by
-   a small atomic displacement are what we need for phonon
-   calculation.
+   This will write ``site.ext`` to disk in the current directory. Note
+   that this site file will be written in fractional co-ordinates. At
+   present, the LM interface supports just fractional co-ordinates.  
 
-3) Create ``FORCE_SETS`` by
+2) Read the LM site file and create supercells with a command of the
+   form,
+
+   ::
+
+      % phonopy --lmto -d --dim='2 2 2' -c site.ext
+
+   In this example, 2x2x2 supercells are created. ``supercell.ext``
+   and ``supercell-xxx.ext`` (``xxx`` are integers) correspond to the
+   perfect supercell and supercells with displacements,
+   respectively. These supercell files, are LM site files ready to be
+   used in ``ctrl.ext``. A file named ``disp.yaml`` is also created in
+   the current directory. This file contains information pertaining to
+   displacements.
+
+3) Next, run the calculation and be sure to use the ``--wforce=force``
+   flag. This will write a file containing forces to disk. Phonopy
+   will require this file to be read in the next step.
+
+4) Create ``FORCE_SETS`` by
 
    ::
    
-     % phonopy --elk -f disp-001/INFO.OUT disp-002/INFO.OUT  ...
+     % phonopy --lmto -f force-001.ext force-002.ext  ...
 
    To run this command, ``disp.yaml`` has to be located in the current
    directory because the atomic displacements are written into the
-   FORCE_SETS file. See some more detail at
-   :ref:`elk_force_sets_option`. An example is found in
-   ``example/Si-elk``.
-
-4) Run post-process of phonopy with the Elk input file for the
-   unit cell used in the step 1::
-
-   % phonopy --elk -c elk-unitcell.in -p band.conf
-
-   or::
+   ``FORCE_SETS`` file. 
    
-   % phonopy --elk -c elk-unitcell.in --dim="2 2 2" [other-OPTIONS] [setting-file]
+5) Run post-process of phonopy with the LM site file for the unit cell
+   used in the first step 
+
+   ::
+
+      % phonopy --lmto -c site.ext -p band.conf
+   
+   or 
+
+   ::
+   
+      % phonopy --lmto -c site.ext --dim="2 2 2" [other-OPTIONS] [setting-file]
 
