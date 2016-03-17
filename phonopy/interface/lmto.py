@@ -7,13 +7,13 @@
 #                 site file into a meta class with the header and site
 #                 positions extending it. This code is stable yet 
 #                 inefficient.                 
-#     LAST EDITED: 18.59 15/03/2016
-#     VERSION: 0.5 --- gcgs
+#     LAST EDITED: 12.24 17/03/2016
+#     VERSION: 0.51 --- gcgs
 
 import sys
 import numpy as np
 
-from phonopy.file_IO import collect_forces, get_drift_forces
+from phonopy.file_IO import get_drift_forces
 from phonopy.interface.vasp import get_scaled_positions_lines, sort_positions_by_symbols
 from phonopy.units import Bohr
 from phonopy.structure.atoms import Atoms, symbol_map
@@ -167,4 +167,4 @@ if __name__ == '__main__':
     cell = read_lmto(sys.argv[1])
     symmetry = Symmetry(cell)
     print('# %s' % symmetry.get_international_table())
-    print(get_elk_structure(cell, sp_filenames=sp_filenames))
+    print(get_lmto_structure(cell))
