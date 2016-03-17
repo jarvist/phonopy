@@ -10,7 +10,6 @@ from __future__ import print_function
 from phonopy.file_IO import get_drift_forces
 from phonopy.interface.vasp import sort_positions_by_symbols
 #from phonopy.interface.vasp import get_scaled_positions_lines
->>>>>>> lmto_interface
 from phonopy.units import Bohr
 from phonopy.structure.atoms import Atoms, symbol_map
 
