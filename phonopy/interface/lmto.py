@@ -25,7 +25,7 @@ def parse_set_of_forces(num_atoms, forces_filenames):
                 if line.strip().startswith('%'): continue
                 else:
                     lmto_forces.append(
-                        [float(line.split()[i]) for i in xrange(3)])
+                        [float(line.split()[i]) for i in range(3)])
                 if len(lmto_forces) == num_atoms: break
     
         if not lmto_forces:
@@ -45,7 +45,7 @@ def read_lmto(filename):
     lmto_in = LMTOIn(header, sites)
     tags = lmto_in.get_variables(header, sites)
 
-    plat = [tags['alat'] * np.array(tags['plat'][i]) for i in xrange(3)]
+    plat = [tags['alat'] * np.array(tags['plat'][i]) for i in range(3)]
     positions = tags['atoms']['positions']
     symbols = tags['atoms']['spfnames']
     
@@ -75,26 +75,21 @@ def get_lmto_structure(cell):
      sort_list) = sort_positions_by_symbols(cell.get_chemical_symbols(),
                                             cell.get_scaled_positions())
     
-    lines = '% site-data vn=3.0 xpos fast io=62'
-    lines += ' nbas=%d' % sum(num_atoms)
-    lines += ' alat=1.0'
-    lines += ' plat=' + (' %10.7f' * 9 + '\n') % tuple(lattice.ravel())
-    lines += '#' + '                        ' + 'pos'
-    lines += '                                   ' + 'vel'
-    lines += '                                    ' + 'eula'
-    lines += '                   ' + 'vshft  PL rlx\n'
-    count = 0
-    for n in xrange(len(num_atoms)):
-        i = 0
-        while i < num_atoms[n]:
-            lines += ' ' + symbols[n]
-            for x in xrange(3): 
-                lines += 3*' ' + '%10.7f' % scaled_positions[count, x]
-            for y in xrange(7):
-                lines += 3*' ' + '%10.7f' % 0
-            lines += ' 0 111'
-            lines += '\n'
-            i += 1; count += 1
+    lines = '%% site-data vn=3.0 xpos fast io=62 nbas=%d' % sum(num_atoms)
+    lines += ' alat=1.0 plat=' + ('%10.7f ' * 9 + '\n') % tuple(lattice.ravel())
+    lines += '#                        pos                                   '
+    lines += 'vel                                    eula                   ' 
+    lines += 'vshft  PL rlx\n'
+   
+    atom_species = []
+    for i, j in zip(symbols, num_atoms):
+        atom_species.append([i]*j)
+    
+    for x, y in zip(sum(atom_species, []), scaled_positions):
+        lines += ' %s' % x
+        lines += '    %.7f    %.7f    %.7f' % tuple(y)
+        lines += '    %.7f    %.7f    %.7f    %.7f    %.7f    %.7f    %.7f' % tuple([0.0] * 7)
+        lines += ' 0 111\n'
 
     return lines
 

@@ -41,7 +41,13 @@ def mode_cv(temp, freqs): # freqs (eV)
     return Kb * x ** 2 * expVal / (expVal - 1.0) ** 2
 
 def mode_F(temp, freqs):
-    return Kb * temp * np.log(1.0 - np.exp((- freqs) / (Kb * temp))) + freqs / 2
+    nfreqs = []
+    for x in freqs:
+        if x < 0:
+            nfreqs.append(0)
+        else:
+            nfreqs.append(x)
+    return Kb * temp * np.log(1.0 - np.exp((- nfreqs) / (Kb * temp))) + nfreqs / 2
 
 def mode_S(temp, freqs):
     val = freqs / (2 * Kb * temp)
@@ -49,7 +55,13 @@ def mode_S(temp, freqs):
             Kb * np.log(2 * np.sinh(val)))
 
 def mode_ZPE(temp, freqs):
-    return freqs / 2
+    nfreqs = []
+    for x in freqs:
+        if x < 0:
+            nfreqs.append(0)
+        else:
+            nfreqs.append(x)
+    return np.array(nfreqs) / 2
 
 def mode_zero(temp, freqs):
     return 0
