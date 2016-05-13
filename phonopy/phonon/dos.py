@@ -359,7 +359,7 @@ class PartialDos(Dos):
 
         dummy = np.arange(3,dtype='int') + 15# first 3 indexes
         print("dummy indices: ",dummy)
-        self._eigvecs2 =  np.abs(self._eigenvectors[:, :, :]) ** 2
+        self._eigvecs2 =  np.abs(self._eigenvectors[:, :, :]) 
 #        self._eigvecs2 += np.abs(self._eigenvectors[:, :, 1]) ** 2
 #        self._eigvecs2 += np.abs(self._eigenvectors[:, :, 2]) ** 2
 
@@ -390,18 +390,22 @@ class PartialDos(Dos):
             amplitudes = self._smearing_function.calc(self._frequencies - freq)
             for j in range(self._partial_dos.shape[0]):
                 self._partial_dos[j, i]= np.dot(
-                    weights , self._eigvecs2[:, j, :] * amplitudes).sum()
+                        weights , self._eigvecs2[:, : , j] * amplitudes).sum()
 
-    def _run_smearing_method(self):
+    def _run_smearing_method(self): # Hacked to do 'eigenvector' / eigenvalue decomposition of pDoS
+        print("Hacked up smearing method...")
         weights = self._weights / float(np.sum(self._weights))
         for i, freq in enumerate(self._frequency_points):
             amplitudes = self._smearing_function.calc(self._frequencies - freq)
             for j in range(self._partial_dos.shape[0]):
-                self._partial_dos[j, i]= np.dot(
-                    weights , self._eigvecs2[:, :, j] * amplitudes).sum()
+#                embed()
+                #self._partial_dos[j, i]= np.dot(
+                #        weights , self._eigvecs2[:, j, :] * amplitudes).sum()
+                self._partial_dos[j,i] = amplitudes[:,j].sum() #I'm so naughty.
 
 
     def _run_tetrahedron_method(self):
+        print("Tetrahedron method...")
         thm = self._tetrahedron_mesh
         thm.set(value='I', frequency_points=self._frequency_points)
         for i, iw in enumerate(thm):
