@@ -209,9 +209,12 @@ class Mesh:
             if not self._is_eigenvectors:
                 self._eigenvalues = None
         else:
+            print("Enumerating q-points and constructing, solving, dynamic matrix.")
             for i, q in enumerate(self._qpoints):
                 self._dynamical_matrix.set_dynamical_matrix(q)
+#                print("Constructing Dynamic Matrix...")
                 dm = self._dynamical_matrix.get_dynamical_matrix()
+#                print ("Solving Dynamic Matrix...")
                 if self._is_eigenvectors:
                     eigvals, self._eigenvectors[i] = np.linalg.eigh(dm)
                     self._eigenvalues[i] = eigvals.real
