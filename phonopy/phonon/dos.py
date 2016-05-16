@@ -169,6 +169,8 @@ class Dos:
                 mesh_object.get_ir_grid_points())
         else:
             self._tetrahedron_mesh = None
+        
+        #self._eigenmode_partialdos=self._eigenmode_partialdos
 
         self._frequency_points = None
         self._sigma = sigma
@@ -323,7 +325,8 @@ class PartialDos(Dos):
                  sigma=None,
                  tetrahedron_method=False,
                  direction=None,
-                 xyz_projection=False):
+                 xyz_projection=False,
+                 _eigenmode_partialdos=False):
         Dos.__init__(self,
                      mesh_object,
                      sigma=sigma,
@@ -351,40 +354,22 @@ class PartialDos(Dos):
                 proj_eigvecs += self._eigenvectors[:, i_z, :] * d[2]
                 self._eigvecs2 = np.abs(proj_eigvecs) ** 2
 
-# Hard coded by Jarvist...
-        num_atom = self._frequencies.shape[1] // 3
-        i_x = np.arange(num_atom, dtype='int') * 3
-        i_y = np.arange(num_atom, dtype='int') * 3 + 1
-        i_z = np.arange(num_atom, dtype='int') * 3 + 2
-
-        dummy = np.arange(3,dtype='int') + 15# first 3 indexes
-        print("dummy indices: ",dummy)
-        self._eigvecs2 =  np.abs(self._eigenvectors[:, :, :]) 
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, :, 1]) ** 2
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, :, 2]) ** 2
-
-
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, dummy, 1]) ** 2
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, dummy, 2]) ** 2
-
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, i_y, :]) ** 2
-#        self._eigvecs2 += np.abs(self._eigenvectors[:, i_z, :]) ** 2
-
-#        self._eigvecs2=np.swapaxes(self._eigvecs2,1,2)
-        print("PartialDos(),self.eigvecs2: ",self._eigvecs2)
-        embed() # Ta Da!
-#        print("Individual strip: self._eigvecs2[:,1,:]: ",self._eigvecs2[:,1,:])
-
     def run(self):
         num_pdos = self._eigvecs2.shape[1] # Counts number of objects in eigenvectors ^2 to see how large pDoS bins are
         num_freqs = len(self._frequency_points) # Bins for histogram of frequency (pDoS)
         self._partial_dos = np.zeros((num_pdos, num_freqs), dtype='double')
-        if self._tetrahedron_mesh is None:
-            self._run_smearing_method()
-        else:
-            self._run_tetrahedron_method()
+        
+        self._eigenmode_partialdos=True # Terrible override...
 
-    def _run_smearing_method_backup(self):
+        if self._eigenmode_partialdos is False:
+            if self._tetrahedron_mesh is None:
+                self._run_smearing_method()
+            else:
+                self._run_tetrahedron_method()
+        else:
+            self._run_smearing_method_eigenmode_partialdos()
+
+    def _run_smearing_method(self):
         weights = self._weights / float(np.sum(self._weights))
         for i, freq in enumerate(self._frequency_points):
             amplitudes = self._smearing_function.calc(self._frequencies - freq)
@@ -392,16 +377,15 @@ class PartialDos(Dos):
                 self._partial_dos[j, i]= np.dot(
                         weights , self._eigvecs2[:, : , j] * amplitudes).sum()
 
-    def _run_smearing_method(self): # Hacked to do 'eigenvector' / eigenvalue decomposition of pDoS
-        print("Hacked up smearing method...")
+    def _run_smearing_method_eigenmode_partialdos(self): # Hacked to do 'eigenvector' / eigenvalue decomposition of pDoS
+        print("Hacked up smearing method... - resolved by eigenmode...")
         weights = self._weights / float(np.sum(self._weights))
         for i, freq in enumerate(self._frequency_points):
             amplitudes = self._smearing_function.calc(self._frequencies - freq)
             for j in range(self._partial_dos.shape[0]):
-#                embed()
                 #self._partial_dos[j, i]= np.dot(
                 #        weights , self._eigvecs2[:, j, :] * amplitudes).sum()
-                self._partial_dos[j,i] = amplitudes[:,j].sum() #I'm so naughty.
+                self._partial_dos[j,i] = amplitudes[:,j].sum() # iterates over 'j' eigenmodes 
 
 
     def _run_tetrahedron_method(self):

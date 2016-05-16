@@ -930,6 +930,7 @@ class PhonopySettings(Settings):
         self._write_dynamical_matrices = False
         self._write_mesh = True
         self._xyz_projection = False
+        self._eigenmode_partialdos = False # Break down partial DoS by eigenmode ?
 
     def set_anime_band_index(self, band_index):
         self._anime_band_index = band_index
@@ -1192,6 +1193,12 @@ class PhonopySettings(Settings):
         
     def get_xyz_projection(self):
         return self._xyz_projection
+
+    def set_eigenmode_partialdos(self, state):
+        self._eigenmode_partialdos = state
+
+    def get_eigenmode_partialdos(self):
+        return self._eigenmode_partialdos
         
 class PhonopyConfParser(ConfParser):
     def __init__(self, filename=None, options=None, option_list=None):
@@ -1436,6 +1443,10 @@ class PhonopyConfParser(ConfParser):
             if conf_key == 'xyz_projection':
                 if confs['xyz_projection'] == '.true.':
                     self.set_parameter('xyz_projection', True)
+
+            if conf_key == 'eigenmode_partialdos':
+                if confs['eigenmode_partialdos'] == '.true.':
+                    self.set_parameter('eigenmode_partialdos', True)
 
             if conf_key == 'dos':
                 if confs['dos'] == '.true.':
@@ -1693,6 +1704,12 @@ class PhonopyConfParser(ConfParser):
             self._settings.set_xyz_projection(params['xyz_projection'])
             if 'pdos' not in params:
                 self.set_parameter('pdos', [])
+
+        # Decompose partial DoS by eigenmode. Assumes smearing method. (Not coded for tetrahedral yet)
+        if 'eigenmode_partialdos' in params:
+            self._settings.set_eigenmode_partialdos(True)
+            if 'pdos' not in params:
+                self.set_parameter('pdos',[]) # Only makes sense if calculating pDoS
 
         if 'pdos' in params:
             self._settings.set_pdos_indices(params['pdos'])
