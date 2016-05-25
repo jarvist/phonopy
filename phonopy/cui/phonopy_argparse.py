@@ -106,6 +106,7 @@ def get_parser():
         tmax=None,
         tmin=None,
         tstep=None,
+        vasp_mode=False,
         verbose=False,
         wien2k_mode=False,
         write_dynamical_matrices=False,
@@ -344,6 +345,9 @@ def get_parser():
         "-v", "--verbose", dest="verbose", action="store_true",
         help="Detailed information is shown.")
     parser.add_option(
+        "--vasp", dest="vasp_mode",
+        action="store_true", help="Invoke Vasp mode")
+    parser.add_option(
         "--wien2k", dest="wien2k_mode",
         action="store_true", help="Invoke Wien2k mode")
     parser.add_option(
@@ -356,6 +360,9 @@ def get_parser():
         "--writedm", dest="write_dynamical_matrices", action="store_true",
         help=("Write dynamical matrices. This has to be used "
               "with QPOINTS setting (or --qpoints)"))
+    parser.add_option(
+        "--xyz_projection", dest="xyz_projection", action="store_true",
+        help="Project PDOS x, y, z directions in Cartesian coordinates")
     parser.add_option(
         "--yaml", dest="yaml_mode", action="store_true",
         help="Activate phonopy YAML mode")
