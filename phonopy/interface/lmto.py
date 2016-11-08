@@ -19,21 +19,9 @@ import numpy as np
 def parse_set_of_forces(num_atoms, forces_filenames):
     force_sets = []
     for filename in forces_filenames:
-        lmto_forces = []
-        with open(filename, 'r') as f:
-            for line in f:
-                if line.strip().startswith('%'): continue
-                else:
-                    lmto_forces.append(
-                        [float(line.split()[i]) for i in range(3)])
-                if len(lmto_forces) == num_atoms: break
-    
-        if not lmto_forces:
-            return []
-
+        lmto_forces = np.loadtxt(filename, dtype=float, skiprows=1)
         drift_force = get_drift_forces(lmto_forces)
-        force_sets.append(np.array(lmto_forces) - drift_force)
-
+        force_sets.append(lmto_forces - drift_force)
     return force_sets
 
 def read_lmto(filename):

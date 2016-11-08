@@ -212,7 +212,7 @@ if options.loglevel is not None:
 # abinit        : hartree, au,        AMU,         eV/Angstrom
 # elk           : hartree, au,        AMU,         hartree/au
 
-# lmto          : Ry,      au,        AMU,         mRy/au 
+# lmto          : Ry,      au,        AMU,         mRy/au
 # gcgs edit - 18.01 15/03/2016
 
 # pwscf         : Ry,      au,        AMU,         Ry/au
@@ -525,8 +525,8 @@ if run_mode == 'displacements':
    # gcgs edit - 18.03 15/03/2016
     elif interface_mode == 'lmto':
         ext = optional_structure_file_information.split('.')[-1]
-        write_supercells_with_displacements(supercell, 
-                                            cells_with_disps, 
+        write_supercells_with_displacements(supercell,
+                                            cells_with_disps,
                                             ext)
     elif (interface_mode == 'pwscf' or
           interface_mode == 'elk' or
