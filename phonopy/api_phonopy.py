@@ -34,7 +34,8 @@
 
 import sys
 import numpy as np
-from phonopy.structure.atoms import Atoms
+from phonopy.version import __version__
+from phonopy.structure.atoms import PhonopyAtoms as Atoms
 from phonopy.structure.symmetry import Symmetry
 from phonopy.structure.cells import get_supercell, get_primitive
 from phonopy.harmonic.displacement import (get_least_displacements,
@@ -60,32 +61,47 @@ from phonopy.phonon.qpoints_mode import QpointsPhonon
 from phonopy.phonon.irreps import IrReps
 from phonopy.phonon.group_velocity import GroupVelocity
 from phonopy.phonon.tetrahedron_mesh import TetrahedronMesh
+from phonopy.phonon.moment import PhononMoment
 
-class Phonopy:
+class Phonopy(object):
     def __init__(self,
                  unitcell,
                  supercell_matrix,
                  primitive_matrix=None,
                  nac_params=None,
-                 distance=0.01,
+                 distance=None,
                  factor=VaspToTHz,
-                 is_auto_displacements=True,
+                 is_auto_displacements=None,
                  dynamical_matrix_decimals=None,
                  force_constants_decimals=None,
                  symprec=1e-5,
                  is_symmetry=True,
                  use_lapack_solver=False,
                  log_level=0):
+
+        if is_auto_displacements is not None:
+            print("Warning: \'is_auto_displacements\' argument is obsolete.")
+            if is_auto_displacements is False:
+                print("Sets of displacements are not created as default.")
+            else:
+                print("Use \'generate_displacements\' method explicitly to "
+                      "create sets of displacements.")
+
+        if distance is not None:
+            print("Warning: \'distance\' keyword argument is obsolete at "
+                  "Phonopy instantiation.")
+            print("Specify \'distance\' keyword argument when calling "
+                  "\'generate_displacements\'")
+            print("method (See the Phonopy API document).")
+
         self._symprec = symprec
-        self._distance = distance
         self._factor = factor
-        self._is_auto_displacements = is_auto_displacements
         self._is_symmetry = is_symmetry
         self._use_lapack_solver = use_lapack_solver
         self._log_level = log_level
 
         # Create supercell and primitive cell
-        self._unitcell = unitcell
+        self._unitcell = Atoms(atoms=unitcell)
         self._supercell_matrix = supercell_matrix
         self._primitive_matrix = primitive_matrix
         self._supercell = None
@@ -104,8 +120,6 @@ class Phonopy:
         self._displacements = None
         self._displacement_directions = None
         self._supercells_with_displacements = None
-        if self._is_auto_displacements:
-            self.generate_displacements(distance=self._distance)
 
         # set_force_constants or set_forces
         self._force_constants = None
@@ -149,12 +163,8 @@ class Phonopy:
         # set_group_velocity
         self._group_velocity = None
 
-    ####################
-    # Cell             #
-    # displacements    #
-    # force constants  #
-    # dynamical matrix #
-    ####################
+    def get_version(self):
+        return __version__
 
     def get_primitive(self):
         return self._primitive
@@ -176,6 +186,12 @@ class Phonopy:
     def get_primitive_symmetry(self):
         """return symmetry of primitive cell"""
         return self._primitive_symmetry
+
+    def get_supercell_matrix(self):
+        return self._supercell_matrix
+
+    def get_primitive_matrix(self):
+        return self._primitive_matrix
 
     def get_unit_conversion_factor(self):
         return self._factor
@@ -209,6 +225,9 @@ class Phonopy:
                                      self._primitive,
                                      self._symprec)
 
+    def get_nac_params(self):
+        return self._nac_params
+
     def get_dynamical_matrix(self):
         return self._dynamical_matrix
     dynamical_matrix = property(get_dynamical_matrix)
@@ -217,8 +236,9 @@ class Phonopy:
         self._unitcell = unitcell
         self._build_supercell()
         self._build_primitive_cell()
-        if self._is_auto_displacements:
-            self.generate_displacements(distance=self._distance)
+        self._search_symmetry()
+        self._search_primitive_symmetry()
+        self._displacement_dataset = None
 
     def set_masses(self, masses):
         p_masses = np.array(masses)
@@ -285,61 +305,6 @@ class Phonopy:
 
     def set_dynamical_matrix(self):
         self._set_dynamical_matrix()
-
-    def set_displacements(self, displacements):
-        print('')
-        print("********************************** Warning"
-              "**********************************")
-        print("set_displacements is obsolete. Do nothing.")
-        print("******************************************"
-              "**********************************")
-        print('')
-
-    def set_force_sets(self, force_sets):
-        print('')
-        print("********************************** Warning"
-              "**********************************")
-        print("set_force_sets will be obsolete.")
-        print("   The method name is changed to set_displacement_dataset.")
-        print("******************************************"
-              "**********************************")
-        print('')
-        self.set_displacement_dataset(force_sets)
-
-    def set_post_process(self,
-                         primitive_matrix=None,
-                         sets_of_forces=None,
-                         displacement_dataset=None,
-                         force_constants=None,
-                         is_nac=None):
-        print('')
-        print("********************************** Warning"
-              "**********************************")
-        print("set_post_process will be obsolete.")
-        print("  produce_force_constants is used instead of set_post_process"
-              " for producing")
-        print("  force constants from forces.")
-        if primitive_matrix is not None:
-            print("  primitive_matrix has to be given at Phonopy::__init__"
-                  " object creation.")
-        print ("******************************************"
-               "**********************************")
-        print('')
-
-        if primitive_matrix is not None:
-            self._primitive_matrix = primitive_matrix
-            self._build_primitive_cell()
-            self._search_primitive_symmetry()
-
-        if sets_of_forces is not None:
-            self.set_forces(sets_of_forces)
-        elif displacement_dataset is not None:
-            self._displacement_dataset = displacement_dataset
-        elif force_constants is not None:
-            self.set_force_constants(force_constants)
-
-        if self._displacement_dataset is not None:
-            self.produce_force_constants()
 
     def generate_displacements(self,
                                distance=0.01,
@@ -409,10 +374,8 @@ class Phonopy:
         self._set_dynamical_matrix()
 
     def symmetrize_force_constants_by_space_group(self):
-        from phonopy.harmonic.force_constants import \
-            set_tensor_symmetry, \
-            set_tensor_symmetry_old, \
-            set_tensor_symmetry_PJ
+        from phonopy.harmonic.force_constants import (set_tensor_symmetry,
+                                                      set_tensor_symmetry_PJ)
         set_tensor_symmetry_PJ(self._force_constants,
                                self._supercell.get_cell().T,
                                self._supercell.get_scaled_positions(),
@@ -552,10 +515,21 @@ class Phonopy:
         return True
 
     def get_mesh(self):
-        return (self._mesh.get_qpoints(),
-                self._mesh.get_weights(),
-                self._mesh.get_frequencies(),
-                self._mesh.get_eigenvectors())
+        if self._mesh is None:
+            return None
+        else:
+            return (self._mesh.get_qpoints(),
+                    self._mesh.get_weights(),
+                    self._mesh.get_frequencies(),
+                    self._mesh.get_eigenvectors())
+    
+    def get_mesh_grid_info(self):
+        if self._mesh is None:
+            return None
+        else:
+            return (self._mesh.get_grid_address(),
+                    self._mesh.get_ir_grid_points(),
+                    self._mesh.get_grid_mapping_table())
 
     def write_hdf5_mesh(self):
         self._mesh.write_hdf5()
@@ -592,40 +566,6 @@ class Phonopy:
                             flip_xy=True)
 
         return plt
-
-    # Thermal property
-    def set_thermal_properties(self,
-                               t_step=10,
-                               t_max=1000,
-                               t_min=0,
-                               is_projection=False,
-                               band_indices=None,
-                               cutoff_frequency=None):
-        if self._mesh is None:
-            print("set_mesh has to be done before set_thermal_properties")
-            return False
-        else:
-            tp = ThermalProperties(self._mesh.get_frequencies(),
-                                   weights=self._mesh.get_weights(),
-                                   eigenvectors=self._mesh.get_eigenvectors(),
-                                   is_projection=is_projection,
-                                   band_indices=band_indices,
-                                   cutoff_frequency=cutoff_frequency)
-            tp.run(t_step=t_step, t_max=t_max, t_min=t_min)
-            self._thermal_properties = tp
-
-    def get_thermal_properties(self):
-        temps, fe, entropy, cv = \
-            self._thermal_properties.get_thermal_properties()
-        return temps, fe, entropy, cv
-
-    def plot_thermal_properties(self):
-        import matplotlib.pyplot as plt
-        self._thermal_properties.plot(plt)
-        return plt
-
-    def write_yaml_thermal_properties(self, filename='thermal_properties.yaml'):
-        self._thermal_properties.write_yaml(filename=filename)
 
     # DOS
     def set_total_DOS(self,
@@ -737,11 +677,54 @@ class Phonopy:
     def write_partial_DOS(self):
         self._pdos.write()
 
+    # Thermal property
+    def set_thermal_properties(self,
+                               t_step=10,
+                               t_max=1000,
+                               t_min=0,
+                               temperatures=None,
+                               is_projection=False,
+                               band_indices=None,
+                               cutoff_frequency=None):
+        if self._mesh is None:
+            print("Warning: set_mesh has to be done before "
+                  "set_thermal_properties")
+            return False
+        else:
+            tp = ThermalProperties(self._mesh.get_frequencies(),
+                                   weights=self._mesh.get_weights(),
+                                   eigenvectors=self._mesh.get_eigenvectors(),
+                                   is_projection=is_projection,
+                                   band_indices=band_indices,
+                                   cutoff_frequency=cutoff_frequency)
+            if temperatures is None:
+                tp.set_temperature_range(t_step=t_step,
+                                         t_max=t_max,
+                                         t_min=t_min)
+            else:
+                tp.set_temperatures(temperatures)
+            tp.run()
+            self._thermal_properties = tp
+
+    def get_thermal_properties(self):
+        temps, fe, entropy, cv = \
+            self._thermal_properties.get_thermal_properties()
+        return temps, fe, entropy, cv
+
+    def plot_thermal_properties(self):
+        import matplotlib.pyplot as plt
+        self._thermal_properties.plot(plt)
+        return plt
+
+    def write_yaml_thermal_properties(self, filename='thermal_properties.yaml'):
+        self._thermal_properties.write_yaml(filename=filename)
+
     # Thermal displacement
     def set_thermal_displacements(self,
                                   t_step=10,
                                   t_max=1000,
                                   t_min=0,
+                                  temperatures=None,
                                   direction=None,
                                   cutoff_frequency=None):
         """
@@ -775,7 +758,10 @@ class Phonopy:
                                   eigvecs,
                                   self._primitive.get_masses(),
                                   cutoff_frequency=cutoff_frequency)
-        td.set_temperature_range(t_min, t_max, t_step)
+        if temperatures is None:
+            td.set_temperature_range(t_min, t_max, t_step)
+        else:
+            td.set_temperatures(temperatures)
         if direction is not None:
             td.project_eigenvectors(direction, self._primitive.get_cell())
         td.run()
@@ -797,10 +783,11 @@ class Phonopy:
 
     # Thermal displacement matrix
     def set_thermal_displacement_matrices(self,
-                                           t_step=10,
-                                           t_max=1000,
-                                           t_min=0,
-                                           cutoff_frequency=None):
+                                          t_step=10,
+                                          t_max=1000,
+                                          t_min=0,
+                                          cutoff_frequency=None,
+                                          t_cif=None):
         """
         cutoff_frequency:
           phonon modes that have frequencies below cutoff_frequency
@@ -812,7 +799,7 @@ class Phonopy:
         self._thermal_displacement_matrices = None
 
         if self._mesh is None:
-            print("\'set_mesh\' has to finish correctly "
+            print("Warning: \'set_mesh\' has to finish correctly "
                   "before \'set_thermal_displacement_matrices\'.")
             return False
 
@@ -829,21 +816,31 @@ class Phonopy:
             return False
 
         tdm = ThermalDisplacementMatrices(frequencies,
-                                           eigvecs,
-                                           self._primitive.get_masses(),
-                                           cutoff_frequency=cutoff_frequency)
-        tdm.set_temperature_range(t_min, t_max, t_step)
+                                          eigvecs,
+                                          self._primitive.get_masses(),
+                                          cutoff_frequency=cutoff_frequency,
+                                          lattice=self._primitive.get_cell().T)
+        if t_cif is None:
+            tdm.set_temperature_range(t_min, t_max, t_step)
+        else:
+            tdm.set_temperatures([t_cif])
         tdm.run()
 
         self._thermal_displacement_matrices = tdm
         return True
 
     def get_thermal_displacement_matrices(self):
-        if self._thermal_displacement_matrices is not None:
-            return self._thermal_displacement_matrices.get_thermal_displacement_matrices()
+        tdm = self._thermal_displacement_matrices
+        if tdm is not None:
+            return tdm.get_thermal_displacement_matrices()
 
     def write_yaml_thermal_displacement_matrices(self):
         self._thermal_displacement_matrices.write_yaml()
+
+    def write_thermal_displacement_matrix_to_cif(self,
+                                                 temperature_index):
+        self._thermal_displacement_matrices.write_cif(self._primitive,
+                                                      temperature_index)
 
     # Mean square distance between a pair of atoms
     def set_thermal_distances(self,
@@ -881,15 +878,14 @@ class Phonopy:
                            q_points,
                            nac_q_direction=None,
                            is_eigenvectors=False,
-                           write_dynamical_matrices=False,
-                           factor=VaspToTHz):
+                           write_dynamical_matrices=False):
         if self._dynamical_matrix is None:
             print("Warning: Dynamical matrix has not yet built.")
             self._qpoints_phonon = None
             return False
 
         self._qpoints_phonon = QpointsPhonon(
-            q_points,
+            np.reshape(q_points, (-1, 3)),
             self._dynamical_matrix,
             nac_q_direction=nac_q_direction,
             is_eigenvectors=is_eigenvectors,
@@ -901,6 +897,9 @@ class Phonopy:
     def get_qpoints_phonon(self):
         return (self._qpoints_phonon.get_frequencies(),
                 self._qpoints_phonon.get_eigenvectors())
+
+    def write_hdf5_qpoints_phonon(self):
+        self._qpoints_phonon.write_hdf5()
 
     def write_yaml_qpoints_phonon(self):
         self._qpoints_phonon.write_yaml()
@@ -1093,6 +1092,37 @@ class Phonopy:
         self._group_velocity.set_q_points([q_point])
         return self._group_velocity.get_group_velocity()[0]
 
+    # Moment
+    def set_moment(self,
+                   order=1,
+                   is_projection=False,
+                   freq_min=None,
+                   freq_max=None):
+        if self._mesh is None:
+            print("Warning: set_mesh has to be done before set_moment")
+            return False
+        else:
+            if is_projection:
+                if self._mesh.get_eigenvectors() is None:
+                    print("Warning: Eigenvectors have to be calculated.")
+                    return False
+                moment = PhononMoment(
+                    self._mesh.get_frequencies(),
+                    weights=self._mesh.get_weights(),
+                    eigenvectors=self._mesh.get_eigenvectors())
+            else:
+                moment = PhononMoment(
+                    self._mesh.get_frequencies(),
+                    weights=self._mesh.get_weights())
+            if freq_min is not None or freq_max is not None:
+                moment.set_frequency_range(freq_min=freq_min,
+                                           freq_max=freq_max)
+            moment.run(order=order)
+            self._moment = moment.get_moment()
+            return True
+
+    def get_moment(self):
+        return self._moment
 
     #################
     # Local methods #

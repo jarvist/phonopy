@@ -38,7 +38,8 @@ try:
 except ImportError:
     from io import StringIO
 import numpy as np
-from phonopy.structure.atoms import Atoms, symbol_map, atom_data
+from phonopy.structure.atoms import PhonopyAtoms as Atoms
+from phonopy.structure.atoms import symbol_map, atom_data
 from phonopy.structure.cells import get_primitive, get_supercell
 from phonopy.structure.symmetry import Symmetry
 from phonopy.harmonic.force_constants import similarity_transformation
@@ -47,7 +48,6 @@ from phonopy.file_IO import (write_FORCE_SETS, write_force_constants_to_hdf5,
 
 def parse_set_of_forces(num_atoms,
                         forces_filenames,
-                        is_zero_point=False,
                         verbose=True):
     if verbose:
         sys.stdout.write("counter (file index): ")
@@ -55,24 +55,7 @@ def parse_set_of_forces(num_atoms,
     count = 0
     is_parsed = True
     force_sets = []
-
-    if is_zero_point:
-        force_files = forces_filenames[1:]
-        if _is_version528(forces_filenames[0]):
-            zero_forces = _get_forces_vasprun_xml(_iterparse(
-                VasprunWrapper(forces_filenames[0]), tag='varray'))
-        else:
-            zero_forces = _get_forces_vasprun_xml(
-                _iterparse(forces_filenames[0], tag='varray'))
-
-        if verbose:
-            sys.stdout.write("%d " % (count + 1))
-        count += 1
-
-        if not _check_forces(zero_forces, num_atoms, forces_filenames[0]):
-            is_parsed = False
-    else:
-        force_files = forces_filenames
+    force_files = forces_filenames
 
     for filename in force_files:
         if _is_version528(filename):
@@ -81,9 +64,6 @@ def parse_set_of_forces(num_atoms,
         else:
             force_sets.append(_get_forces_vasprun_xml(
                 _iterparse(filename, tag='varray')))
-
-        if is_zero_point:
-            force_sets[-1] -= zero_forces
 
         if verbose:
             sys.stdout.write("%d " % (count + 1))
@@ -323,11 +303,19 @@ def _get_reduced_symbols(symbols):
 #
 def get_born_OUTCAR(poscar_filename="POSCAR",
                     outcar_filename="OUTCAR",
-                    primitive_axis=np.eye(3),
-                    supercell_matrix=np.eye(3, dtype='intc'),
+                    primitive_matrix=None,
+                    supercell_matrix=None,
                     is_symmetry=True,
                     symmetrize_tensors=False,
                     symprec=1e-5):
+    if primitive_matrix is None:
+        pmat = np.eye(3)
+    else:
+        pmat = primitive_matrix
+    if supercell_matrix is None:
+        smat = np.eye(3, dtype='intc')
+    else:
+        smat = supercell_matrix
     ucell = read_vasp(poscar_filename)
     outcar = open(outcar_filename)
 
@@ -344,13 +332,9 @@ def get_born_OUTCAR(poscar_filename="POSCAR",
         epsilon = _symmetrize_tensor(epsilon, point_sym)
         borns = _symmetrize_borns(borns, u_sym, lattice, positions, symprec)
 
-    inv_smat = np.linalg.inv(supercell_matrix)
-    scell = get_supercell(ucell,
-                          supercell_matrix,
-                          symprec=symprec)
-    pcell = get_primitive(scell,
-                          np.dot(inv_smat, primitive_axis),
-                          symprec=symprec)
+    inv_smat = np.linalg.inv(smat)
+    scell = get_supercell(ucell, smat, symprec=symprec)
+    pcell = get_primitive(scell, np.dot(inv_smat, pmat), symprec=symprec)
     p2s = np.array(pcell.get_primitive_to_supercell_map(), dtype='intc')
     p_sym = Symmetry(pcell, is_symmetry=is_symmetry, symprec=symprec)
     s_indep_atoms = p2s[p_sym.get_independent_atoms()]
@@ -358,7 +342,7 @@ def get_born_OUTCAR(poscar_filename="POSCAR",
     u_indep_atoms = [u2u[x] for x in s_indep_atoms]
     reduced_borns = borns[u_indep_atoms].copy()
 
-    return reduced_borns, epsilon
+    return reduced_borns, epsilon, s_indep_atoms
 
 def _read_born_and_epsilon(outcar):
     borns = []
@@ -591,6 +575,31 @@ def _get_atomtypes_from_vasprun_xml(element):
     return None
 
 #
+# XDATCAR
+#
+def read_XDATCAR(filename="XDATCAR"):
+    lattice = None
+    symbols = None
+    numbers_of_atoms = None
+    with open(filename) as f:
+        f.readline()
+        scale = float(f.readline())
+        a = [float(x) for x in f.readline().split()[:3]]
+        b = [float(x) for x in f.readline().split()[:3]]
+        c = [float(x) for x in f.readline().split()[:3]]
+        lattice = np.transpose([a, b, c]) * scale
+        symbols = f.readline().split()
+        numbers_of_atoms = np.array(
+            [int(x) for x in f.readline().split()[:len(symbols)]], dtype='intc')
+
+    if lattice is not None:
+        data = np.loadtxt(filename, skiprows=7, comments='D')
+        return (data.reshape((-1, numbers_of_atoms.sum(), 3)),
+                np.array(lattice, dtype='double', order='C'))
+    else:
+        return None
+
+#
 # OUTCAR handling (obsolete)
 #
 def read_force_constant_OUTCAR(filename):
@@ -622,8 +631,3 @@ def get_force_constants_OUTCAR(filename):
             force_constants[i, j] = -fc_tmp[i*3:(i+1)*3, j*3:(j+1)*3]
 
     return force_constants
-
-if __name__ == '__main__':
-    import sys
-    atoms = read_vasp(sys.argv[1])
-    write_vasp('%s-new' % sys.argv[1], atoms)

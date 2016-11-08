@@ -3,6 +3,39 @@
 Change Log
 ==========
 
+Nov-1-2016:
+---------------------------
+
+* ``--fz`` option comes back. See :ref:`fz_force_sets_option`.
+
+Oct-23-2016: Version 1.11.2
+---------------------------
+
+* ``TDISPMAT_CIF`` (``--tdm_cif``) for CIF output for thermal
+  displacement is added (:ref:`thermal_displacement_cif_tag`).
+* spglib update to v1.9.7
+
+Aug-29-2016: Version 1.11.0
+---------------------------
+
+* ``FPITCH`` (``--fpicth``) is made (:ref:`dos_fmin_fmax_tags`).
+* Minor update of ``gruneisen``.
+* Tentatively ``phonopy.yaml`` and ``phonopy_disp.yaml`` are written
+  when running phonopy.
+* In Phonopy-API, from this version, to create displacements in
+  supercells internally the phonopy object, the
+  ``generate_displacements`` method has to be called explicitely along
+  with the ``distance`` argument. See :ref:`phonopy_module`.
+
+Jul-17-2016: Version 1.10.10
+-----------------------------
+
+* :ref:`dos_moment_tag` tags are implemented to calculate
+  phonon moments.
+* ``qpoints.hdf5`` is written with the ``--hdf5`` option. Dynamical
+  matrices are also stored in ``qpoints.hdf5`` with ``WRITEDM =
+  .TRUE.`` (``--writedm`` option).
+
 Apr-22-2016: Version 1.10.8
 ----------------------------
 

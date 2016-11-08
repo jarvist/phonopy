@@ -3,6 +3,11 @@
 Command options
 ===============
 
+.. contents::
+   :depth: 2
+   :local:
+
+
 Some of command-line options are equivalent to respective setting
 tags:
 
@@ -20,13 +25,19 @@ tags:
 * ``--eigvecs``, ``--eigenvectors`` (``EIGENVECTORS = .TRUE.``)
 * ``--factor`` (``FREQUENCY_CONVERSION_FACTOR``)
 * ``--fits_debye_model`` (``DEBYE_MODEL = .TRUE.``)
+* ``--fmax`` (``FMAX``)
+* ``--fmin`` (``FMIN``)
+* ``--fpitch`` (``FPITCH``)
 * ``--gc``, ``--gamma_center`` (``GAMMA_CENTER``)
 * ``--gv``, ``--group_velocity`` (``GROUP_VELOCITY = .TRUE.``)
 * ``--gv_delta_q`` (``GV_DELTA_Q``)
+* ``--hdf5`` (``HDF5 = .TRUE.``)
 * ``--irreps`` (``IRREPS``)
 * ``--lcg``, ``--little_cogroup`` (``LITTLE_COGROUP``)
 * ``--modulation`` (``MODULATION``)
-* ``--mp``, ``--mesh`` (``MP``)
+* ``--moment`` (``MOMENT = .TRUE.``)
+* ``--moment_order`` (``MOMENT_ORDER``)
+* ``--mp``, ``--mesh`` (``MP`` or ``MESH``)
 * ``--nac`` (``NAC = .TRUE.``)
 * ``--nosym`` (``SYMMETRY = .FALSE.``)
 * ``--nomeshsym`` (``MESH_SYMMETRY = .FALSE.``)
@@ -41,6 +52,7 @@ tags:
 * ``-t`` (``TPROP``)
 * ``--td`` (``TDISP``)
 * ``--tdm`` (``TDISPMAT``)
+* ``--tdm_cif`` (``TDISPMAT_CIF``)
 * ``--thm``, ``--tetrahedron_method`` (``TETRAHEDRON``)
 * ``--tmin`` (``TMIN``)
 * ``--tmax`` (``TMAX``)
@@ -55,8 +67,8 @@ tags.
 
 .. _force_calculators:
 
-Force calculators
-------------------
+Choice of force calculator
+---------------------------
 
 Currently interfaces for VASP, Wien2k, Pwscf, Abinit, and Elk are
 prepared. Wien2k, Pwscf, Abinit and Elk interfaces are invoked with
@@ -182,6 +194,8 @@ directory. The default file names for the calculators are as follows::
 Create ``FORCE_SETS``
 ----------------------
 
+.. _f_force_sets_option:
+
 ``-f`` or ``--forces``
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -210,15 +224,7 @@ Attention:
   expansions are useful, e.g., ``disp-*/vasprun.xml``, or
   ``disp-{001..128}/vasprun.xml`` (for zsh, and recent bash).
 
-..
-   ``--fz`` option is used to subtract residual forces in the equilibrium
-   supercell.
 
-   ::
-
-      % phonopy --fz sposcar/vasprun.xml disp-001/vasprun.xml ...
-
-   Usually the ``-f`` option is preferable to ``--fz``.
 
 .. _abinit_force_sets_option:
 
@@ -278,6 +284,8 @@ For more information, :ref:`wien2k_interface`.
 Elk interface
 ^^^^^^^^^^^^^^^^
 
+
+
 ``FORCE_SETS`` file is created from ``disp.yaml`` and Elk output
 files.
 
@@ -285,6 +293,36 @@ files.
 
    % phonopy --elk -f disp-001/INFO.OUT disp-002/INFO.OUT  ...
 
+
+.. _fz_force_sets_option:
+
+``--fz``
+~~~~~~~~~
+
+``--fz`` option is used to subtract residual forces frown the forces
+calculated for the supercells with displacements. Here the residual
+forces mean that the forces calculated for the perfect supercell for
+which the number of atoms has to be the same as those for the
+supercells with displacements. If the forces are accurately calculated
+by calculators, the residual forces should be canceled when plus-minus
+displacements are employed (see :ref:`pm_displacement_tag`), that is
+the default option in phonopy. Therefore ``--fz`` option is expected
+to be useful when ``PM = .FALSE.`` is set in the phonopy setting file.
+
+The usage of this option is almost the same as that of ``-f`` option
+except that one more argument is inserted at the front. Mind that
+``--fz`` is exclusively used with ``-f`` option. The example 
+for the VASP interface is shown below::
+
+   % phonopy --fz sposcar/vasprun.xml disp-001/vasprun.xml ...
+
+where ``sposcar/vasprun.xml`` assumes the output file for the perfect
+supercell containing residual forces.
+
+This option perhaps works for the other calculator interfaces than the
+VASP interface, but it is not tested yet. It would be appreciated if
+you report it to the phonopy mailing list when you find it
+does/doesn't work for any other calculator interfaces.
 
 Create ``FORCE_CONSTANTS``
 --------------------------
@@ -402,3 +440,13 @@ calculation results are written into ``mesh.hdf5`` but not into
 ``mesh.yaml``. Using this option may reduce the data output size and
 thus writing time when ``mesh.yaml`` is huge, e.g., eigenvectors are
 written on a dense sampling mesh.
+
+``qpoints.hdf5``
+^^^^^^^^^^^^^^^^^
+
+In the specific q-points calculations (:ref:`qpoints_tag`),
+calculation results are written into ``qpoints.hdf5`` but not into
+``qpoints.yaml``. With :ref:`writedm_tag`, dynamical matrices are also
+stored in ``qpoints.hdf5``. Using this option may be useful with large
+set of q-points with including eigenvector or dynamical matrix output.
+

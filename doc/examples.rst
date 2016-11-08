@@ -3,14 +3,22 @@
 Examples
 ===============
 
+.. contents::
+   :depth: 2
+   :local:
+
 Example files are stored in the ``example`` directory of distributed
-package.
+source package that can be downloaded at
+https://pypi.python.org/pypi/phonopy .
 
 Si
 ---
 
 ``FORCE_SETS`` file creation for VASP
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For the other calculators such as pwscf, abinit, etc, the way to
+create ``FORCE_SETS`` is found following :ref:`calculator_interfaces`.
 
 ::
 

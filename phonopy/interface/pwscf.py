@@ -39,7 +39,8 @@ from phonopy.file_IO import iter_collect_forces, get_drift_forces
 from phonopy.interface.vasp import get_scaled_positions_lines
 from phonopy.units import Bohr
 from phonopy.cui.settings import fracval
-from phonopy.structure.atoms import Atoms, symbol_map
+from phonopy.structure.atoms import PhonopyAtoms as Atoms
+from phonopy.structure.atoms import symbol_map
 
 def parse_set_of_forces(num_atoms, forces_filenames):
     hook = 'Forces acting on atoms'
@@ -172,7 +173,7 @@ def get_pwscf_structure(cell, pp_filenames=None):
 
     return lines
     
-class PwscfIn:
+class PwscfIn(object):
     def __init__(self, lines):
         self._set_methods = {'ibrav':            self._set_ibrav,
                              'nat':              self._set_nat,
@@ -221,11 +222,13 @@ class PwscfIn:
                 print("%s is not found in the input file." % tag)
                 sys.exit(1)
                     
-        for tag, self._values in elements.iteritems():
+        for tag in elements:
+            self._values = elements[tag]
             if tag == 'ibrav' or tag == 'nat' or tag == 'ntyp':
                 self._set_methods[tag]()
 
-        for tag, self._values in elements.iteritems():
+        for tag in elements:
+            self._values = elements[tag]
             if tag != 'ibrav' and tag != 'nat' and tag != 'ntyp':
                 self._set_methods[tag]()
 
@@ -297,11 +300,3 @@ class PwscfIn:
             
         self._tags['atomic_species'] = species
         
-if __name__ == '__main__':
-    import sys
-    from phonopy.structure.symmetry import Symmetry
-    # abinit = PwscfIn(open(sys.argv[1]).readlines())
-    cell, pp_filenames = read_pwscf(sys.argv[1])
-    # symmetry = Symmetry(cell)
-    # print("# %s" % symmetry.get_international_table())
-    print(get_pwscf_structure(cell, pp_filenames))

@@ -16,18 +16,16 @@ package: phonopy
 
 ## The platforms to build on.
 ## platform defaults to linux-64 
-platform: 
-  - linux-64
+# platform: 
+#  - linux-64
 #  - linux-32
 ## The engine are the inital conda packages you want to run with 
 engine:
  - python=2
- - python=3.4
  - python=3
 ## The env param is an environment variable list 
-# engine:
-#  - MY_ENV=A CC=gcc
-#  - MY_ENV=B
+env:
+  - GIT_BRANCH=master
 
 #===============================================================================
 # Scrip options
@@ -37,11 +35,13 @@ engine:
 
 ## Run before the script
 before_script:
-  - conda update -n root conda conda-build --yes
-  - conda config --add channels jochym
+  - conda install anaconda-client --yes
 ## Put your main computations here!  
 script:
+  - conda update -n root conda conda-build --yes
+  - GIT_BRANCH=`git branch |grep '^*'|sed -e 's/^*\s\?//' -e 's/(HEAD [a-z ]* \(.*\))$/\1/'`
   - conda build .
+
 ## This will run after the script regardless of the result of script
 ## BINSTAR_BUILD_RESULT=[succcess|failure] 
 after_script:

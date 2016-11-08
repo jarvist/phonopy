@@ -39,7 +39,7 @@ from phonopy.file_IO import collect_forces, get_drift_forces
 from phonopy.interface.vasp import get_scaled_positions_lines
 from phonopy.units import Bohr
 from phonopy.cui.settings import fracval
-from phonopy.structure.atoms import Atoms
+from phonopy.structure.atoms import PhonopyAtoms as Atoms
 
 def parse_set_of_forces(num_atoms, forces_filenames):
     hook = 'cartesian forces (eV/Angstrom)'
@@ -115,7 +115,7 @@ def get_abinit_structure(cell):
 
     return lines
 
-class AbinitIn:
+class AbinitIn(object):
     def __init__(self, lines):
         self._set_methods = {'acell':     self._set_acell,
                              'natom':     self._set_natom,
@@ -161,11 +161,13 @@ class AbinitIn:
                 print("%s is not found in the input file." % tag)
                 sys.exit(1)
 
-        for tag, self._values in elements.iteritems():
+        for tag in elements:
+            self._values = elements[tag]
             if tag == 'natom' or tag == 'ntypat':
                 self._set_methods[tag]()
 
-        for tag, self._values in elements.iteritems():
+        for tag in elements:
+            self._values = elements[tag]
             if tag != 'natom' and tag != 'ntypat':
                 self._set_methods[tag]()
 

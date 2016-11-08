@@ -1,6 +1,10 @@
 Input files
 ===========
 
+.. contents::
+   :depth: 2
+   :local:
+
 Setting file
 -------------
 
@@ -76,8 +80,8 @@ Example of rutile-type silicon oxide crystal structure (2)
 
 .. _file_forces:
 
-Force file (`FORCE_SETS`)
--------------------------
+Force file (``FORCE_SETS``)
+----------------------------
 
 This file gives sets of forces in supercells with finite atomic
 displacements. Each supercell involves one displaced atom.  The first
@@ -177,7 +181,11 @@ Example
      0.000000000000000     4.635786969900130     0.000000000000000
      0.000000000000000     0.000000000000000     4.635786969900130
 
+``force_constants.hdf5``
+-------------------------
 
+This is an alternative of ``FORCE_CONSTANTS`` but the data is stored
+in HDF5 format. See the detail of how to obtain this file, :ref:`hdf5_option`.
 
 ``QPOINTS`` (optional)
 -----------------------
@@ -206,35 +214,6 @@ Example
 This file is used with the ``--nac`` option or ``NAC`` tag.
 
 The formula implemented is refered to :ref:`non_analytical_term_correction_theory`.
-
-.. ``--nac_old`` option
-.. ~~~~~~~~~~~~~~~~~~~~~
-
-.. When using the ``--nac_old`` option, a damping function is multiplied
-.. with the non-analytical term to obtain the dynamical matrix at
-.. geneneral **q**-points (:ref:`reference_NAC`), which is written
-.. by,
-
-.. .. math::
-
-..    D_{\alpha\beta}(jj',\mathbf{q}) =
-..     D_{\alpha\beta}^{\mathrm{N}}(jj',\mathbf{q}) + \frac{4\pi}{\sqrt{m_j m_j}\Omega_0}
-..     \frac{[\sum_{\gamma}q_{\gamma}Z^{*}_{j,\gamma\alpha}][\sum_{\gamma'}q_{\gamma'}Z^{*}_{j',\gamma'\beta}]}
-..     {\sum_{\alpha\beta}q_{\alpha}\epsilon_{\alpha\beta}^{\infty}
-..     q_{\beta}} \times \exp(-\frac{|\mathbf{q}|^2}{\sigma^2}) \times
-..     \mathrm{unit\ conversion\ factor}.
-
-.. This equation is directly implemented. Therefore unit conversion of
-.. the non-analytical term is necessary. The variables are implemented
-.. that :math:`m` (mass) is in the amu, :math:`\Omega` (volume of
-.. primitive cell) is determined in the input structure file, and
-.. :math:`Z` (Born effective charge) and :math:`\epsilon` (dielectric
-.. constant) are determined in the ``BORN`` file. In
-.. :math:`\exp(-|\mathbf{q}|^2/\sigma^2)`, :math:`\sigma` is the
-.. parameter, and :math:`\mathbf{q}` is the wave vector in reduced
-.. reciprocal coordinate without :math:`2\pi`. The
-.. reciprocal primitive vectors are calculated by
-.. :math:`[\mathbf{a}^*\,\mathbf{b}^*\,\mathbf{c}^*]=[\mathbf{a}\,\mathbf{b}\,\mathbf{c}]^{-T}`.
 
 Format
 ~~~~~~

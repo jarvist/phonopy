@@ -40,7 +40,8 @@ from phonopy.file_IO import iter_collect_forces, get_drift_forces
 from phonopy.interface.vasp import get_scaled_positions_lines
 from phonopy.units import Bohr
 from phonopy.cui.settings import fracval
-from phonopy.structure.atoms import Atoms, symbol_map
+from phonopy.structure.atoms import PhonopyAtoms as Atoms
+from phonopy.structure.atoms import symbol_map
 
 def parse_set_of_forces(num_atoms, forces_filenames):
     hook = '' # Just for skipping the first line
@@ -64,7 +65,7 @@ def read_siesta(filename):
     lattice = siesta_in._tags["latticevectors"]
     positions = siesta_in._tags["atomiccoordinates"]
     atypes = siesta_in._tags["chemicalspecieslabel"]
-    cell = Atoms(numbers=numbers, cell=lattice)
+    cell = Atoms(numbers=numbers, cell=lattice, scaled_positions=positions)
 
     coordformat = siesta_in._tags["atomiccoordinatesformat"]
     if coordformat == "fractional" or coordformat == "scaledbylatticevectors":
@@ -121,7 +122,7 @@ def get_siesta_structure(cell,atypes):
 
     return lines
 
-class SiestaIn:
+class SiestaIn(object):
     _num_regex = '([+-]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)'
     _tags = { "latticeconstant":          1.0,
               "latticeconstantunit":     None,
