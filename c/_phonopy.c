@@ -34,30 +34,58 @@
 
 #include <Python.h>
 #include <stdio.h>
+#include <math.h>
+#include <float.h>
 #include <numpy/arrayobject.h>
 #include <dynmat.h>
 #include <derivative_dynmat.h>
 #include <kgrid.h>
 #include <tetrahedron_method.h>
-#include <phonoc_const.h>
+
+#define KB 8.6173382568083159E-05
+
+/* PHPYCONST is defined in dynmat.h */
 
 /* Build dynamical matrix */
+static PyObject * py_transform_dynmat_to_fc(PyObject *self, PyObject *args);
+static PyObject * py_perm_trans_symmetrize_fc(PyObject *self, PyObject *args);
+static PyObject *
+py_perm_trans_symmetrize_compact_fc(PyObject *self, PyObject *args);
 static PyObject * py_get_dynamical_matrix(PyObject *self, PyObject *args);
 static PyObject * py_get_nac_dynamical_matrix(PyObject *self, PyObject *args);
+static PyObject * py_get_dipole_dipole(PyObject *self, PyObject *args);
+static PyObject * py_get_dipole_dipole_q0(PyObject *self, PyObject *args);
 static PyObject * py_get_derivative_dynmat(PyObject *self, PyObject *args);
 static PyObject * py_get_thermal_properties(PyObject *self, PyObject *args);
-static PyObject * py_distribute_fc2(PyObject *self, PyObject *args);
+static PyObject *
+py_distribute_fc2_with_mappings(PyObject *self, PyObject *args);
+static PyObject * py_compute_permutation(PyObject *self, PyObject *args);
+static PyObject * py_gsv_copy_smallest_vectors(PyObject *self, PyObject *args);
 
-static int distribute_fc2(double * fc2,
-			  const double * lat,
-			  const double * pos,
-			  const int num_pos,
-			  const int atom_disp,
-			  const int map_atom_disp,
-			  const double * r_cart,
-			  const int * r,
-			  const double * t,
-			  const double symprec);
+static void distribute_fc2_with_mappings(double (*fc2)[3][3],
+                                         const int * atom_list,
+                                         const int len_atom_list,
+                                         PHPYCONST double (*r_carts)[3][3],
+                                         const int * permutations,
+                                         const int * map_atoms,
+                                         const int * map_syms,
+                                         const int num_rot,
+                                         const int num_pos);
+
+static int compute_permutation(int * rot_atom,
+                                  PHPYCONST double lat[3][3],
+                                  PHPYCONST double (*pos)[3],
+                                  PHPYCONST double (*rot_pos)[3],
+                                  const int num_pos,
+                                  const double symprec);
+
+static void gsv_copy_smallest_vectors(double (*shortest_vectors)[27][3],
+                                      int * multiplicity,
+                                      PHPYCONST double (*vector_lists)[27][3],
+                                      PHPYCONST double (*length_lists)[27],
+                                      const int num_lists,
+                                      const double symprec);
+
 static PyObject * py_thm_neighboring_grid_points(PyObject *self, PyObject *args);
 static PyObject *
 py_thm_relative_grid_address(PyObject *self, PyObject *args);
@@ -68,14 +96,18 @@ py_thm_integration_weight(PyObject *self, PyObject *args);
 static PyObject *
 py_thm_integration_weight_at_omegas(PyObject *self, PyObject *args);
 static PyObject * py_get_tetrahedra_frequenies(PyObject *self, PyObject *args);
-static PyObject * py_run_tetrahedron_method(PyObject *self, PyObject *args);
+static PyObject * py_tetrahedron_method_dos(PyObject *self, PyObject *args);
 
 static double get_free_energy_omega(const double temperature,
-				    const double omega);
+                                    const double omega);
 static double get_entropy_omega(const double temperature,
-				const double omega);
+                                const double omega);
 static double get_heat_capacity_omega(const double temperature,
-				      const double omega);
+                                      const double omega);
+static void set_index_permutation_symmetry_fc(double * fc,
+                                              const int natom);
+static void set_translational_symmetry_fc(double * fc,
+                                          const int natom);
 /* static double get_energy_omega(double temperature, double omega); */
 static int nint(const double a);
 
@@ -99,11 +131,32 @@ error_out(PyObject *m) {
 
 static PyMethodDef _phonopy_methods[] = {
   {"error_out", (PyCFunction)error_out, METH_NOARGS, NULL},
-  {"dynamical_matrix", py_get_dynamical_matrix, METH_VARARGS, "Dynamical matrix"},
-  {"nac_dynamical_matrix", py_get_nac_dynamical_matrix, METH_VARARGS, "NAC dynamical matrix"},
-  {"derivative_dynmat", py_get_derivative_dynmat, METH_VARARGS, "Q derivative of dynamical matrix"},
-  {"thermal_properties", py_get_thermal_properties, METH_VARARGS, "Thermal properties"},
-  {"distribute_fc2", py_distribute_fc2, METH_VARARGS, "Distribute force constants"},
+  {"transform_dynmat_to_fc", py_transform_dynmat_to_fc, METH_VARARGS,
+   "Transform a set of dynmat to force constants"},
+  {"perm_trans_symmetrize_fc", py_perm_trans_symmetrize_fc, METH_VARARGS,
+   "Enforce permutation and translational symmetry of force constants"},
+  {"perm_trans_symmetrize_compact_fc", py_perm_trans_symmetrize_compact_fc,
+   METH_VARARGS,
+   "Enforce permutation and translational symmetry of compact force constants"},
+  {"dynamical_matrix", py_get_dynamical_matrix, METH_VARARGS,
+   "Dynamical matrix"},
+  {"nac_dynamical_matrix", py_get_nac_dynamical_matrix, METH_VARARGS,
+   "NAC dynamical matrix"},
+  {"dipole_dipole", py_get_dipole_dipole, METH_VARARGS,
+   "Dipole-dipole interaction"},
+  {"dipole_dipole_q0", py_get_dipole_dipole_q0, METH_VARARGS,
+   "q=0 terms of Dipole-dipole interaction"},
+  {"derivative_dynmat", py_get_derivative_dynmat, METH_VARARGS,
+   "Q derivative of dynamical matrix"},
+  {"thermal_properties", py_get_thermal_properties, METH_VARARGS,
+   "Thermal properties"},
+  {"distribute_fc2_with_mappings", py_distribute_fc2_with_mappings,
+   METH_VARARGS,
+   "Distribute force constants for all atoms in atom_list using precomputed symmetry mappings."},
+  {"compute_permutation", py_compute_permutation, METH_VARARGS,
+   "Compute indices of original points in a set of rotated points."},
+  {"gsv_copy_smallest_vectors", py_gsv_copy_smallest_vectors, METH_VARARGS,
+   "Implementation detail of get_smallest_vectors."},
   {"neighboring_grid_points", py_thm_neighboring_grid_points,
    METH_VARARGS, "Neighboring grid points by relative grid addresses"},
   {"tetrahedra_relative_grid_address", py_thm_relative_grid_address,
@@ -118,7 +171,7 @@ static PyMethodDef _phonopy_methods[] = {
    METH_VARARGS, "Integration weight for tetrahedron method at omegas"},
   {"get_tetrahedra_frequencies", py_get_tetrahedra_frequenies,
    METH_VARARGS, "Run tetrahedron method"},
-  {"run_tetrahedron_method", py_run_tetrahedron_method,
+  {"tetrahedron_method_dos", py_tetrahedron_method_dos,
    METH_VARARGS, "Run tetrahedron method"},
   {NULL, NULL, 0, NULL}
 };
@@ -164,10 +217,10 @@ PyInit__phonopy(void)
 #else
   PyObject *module = Py_InitModule("_phonopy", _phonopy_methods);
 #endif
-
+  struct module_state *st;
   if (module == NULL)
     INITERROR;
-  struct module_state *st = GETSTATE(module);
+  st = GETSTATE(module);
 
   st->error = PyErr_NewException("_phonopy.Error", NULL, NULL);
   if (st->error == NULL) {
@@ -180,52 +233,344 @@ PyInit__phonopy(void)
 #endif
 }
 
+static PyObject * py_transform_dynmat_to_fc(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_force_constants;
+  PyArrayObject* py_dynamical_matrices;
+  PyArrayObject* py_commensurate_points;
+  PyArrayObject* py_shortest_vectors;
+  PyArrayObject* py_multiplicities;
+  PyArrayObject* py_masses;
+  PyArrayObject* py_s2pp_map;
+
+  double* fc;
+  double* dm;
+  double (*comm_points)[3];
+  double (*shortest_vectors)[27][3];
+  double* masses;
+  int* multiplicities;
+  int* s2pp_map;
+  int num_patom;
+  int num_satom;
+
+  if (!PyArg_ParseTuple(args, "OOOOOOO",
+                        &py_force_constants,
+                        &py_dynamical_matrices,
+                        &py_commensurate_points,
+                        &py_shortest_vectors,
+                        &py_multiplicities,
+                        &py_masses,
+                        &py_s2pp_map)) {
+    return NULL;
+  }
+
+  fc = (double*)PyArray_DATA(py_force_constants);
+  dm = (double*)PyArray_DATA(py_dynamical_matrices);
+  comm_points = (double(*)[3])PyArray_DATA(py_commensurate_points);
+  shortest_vectors = (double(*)[27][3])PyArray_DATA(py_shortest_vectors);
+  masses = (double*)PyArray_DATA(py_masses);
+  multiplicities = (int*)PyArray_DATA(py_multiplicities);
+  s2pp_map = (int*)PyArray_DATA(py_s2pp_map);
+  num_patom = PyArray_DIMS(py_multiplicities)[1];
+  num_satom = PyArray_DIMS(py_multiplicities)[0];
+
+  dym_transform_dynmat_to_fc(fc,
+                             dm,
+                             comm_points,
+                             shortest_vectors,
+                             multiplicities,
+                             masses,
+                             s2pp_map,
+                             num_patom,
+                             num_satom);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_compute_permutation(PyObject *self, PyObject *args)
+{
+  PyArrayObject* permutation;
+  PyArrayObject* lattice;
+  PyArrayObject* positions;
+  PyArrayObject* permuted_positions;
+  double symprec;
+
+  int* rot_atoms;
+  double (*lat)[3];
+  double (*pos)[3];
+  double (*rot_pos)[3];
+  int num_pos;
+
+  int is_found;
+
+  if (!PyArg_ParseTuple(args, "OOOOd",
+                        &permutation,
+                        &lattice,
+                        &positions,
+                        &permuted_positions,
+                        &symprec)) {
+    return NULL;
+  }
+
+  rot_atoms = (int*)PyArray_DATA(permutation);
+  lat = (double(*)[3])PyArray_DATA(lattice);
+  pos = (double(*)[3])PyArray_DATA(positions);
+  rot_pos = (double(*)[3])PyArray_DATA(permuted_positions);
+  num_pos = PyArray_DIMS(positions)[0];
+
+  is_found = compute_permutation(rot_atoms,
+                                 lat,
+                                 pos,
+                                 rot_pos,
+                                 num_pos,
+                                 symprec);
+
+  return Py_BuildValue("i", is_found);
+}
+
+static PyObject * py_gsv_copy_smallest_vectors(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_shortest_vectors;
+  PyArrayObject* py_multiplicity;
+  PyArrayObject* py_vectors;
+  PyArrayObject* py_lengths;
+  double symprec;
+
+  double (*shortest_vectors)[27][3];
+  double (*vectors)[27][3];
+  double (*lengths)[27];
+  int * multiplicity;
+  int size_super, size_prim;
+
+  if (!PyArg_ParseTuple(args, "OOOOd",
+                        &py_shortest_vectors,
+                        &py_multiplicity,
+                        &py_vectors,
+                        &py_lengths,
+                        &symprec)) {
+    return NULL;
+  }
+
+  shortest_vectors = (double(*)[27][3])PyArray_DATA(py_shortest_vectors);
+  multiplicity = (int*)PyArray_DATA(py_multiplicity);
+  vectors = (double(*)[27][3])PyArray_DATA(py_vectors);
+  lengths = (double(*)[27])PyArray_DATA(py_lengths);
+  size_super = PyArray_DIMS(py_vectors)[0];
+  size_prim = PyArray_DIMS(py_vectors)[1];
+
+  gsv_copy_smallest_vectors(shortest_vectors,
+                            multiplicity,
+                            vectors,
+                            lengths,
+                            size_super * size_prim,
+                            symprec);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_perm_trans_symmetrize_fc(PyObject *self, PyObject *args)
+{
+  PyArrayObject* force_constants;
+  double *fc;
+  int natom;
+
+  if (!PyArg_ParseTuple(args, "O", &force_constants)) {
+    return NULL;
+  }
+
+  fc = (double*)PyArray_DATA(force_constants);
+  natom = PyArray_DIMS(force_constants)[0];
+
+  set_index_permutation_symmetry_fc(fc, natom);
+  set_translational_symmetry_fc(fc, natom);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+py_perm_trans_symmetrize_compact_fc(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_fc;
+  PyArrayObject* py_permutations;
+  PyArrayObject* py_s2p_map;
+  PyArrayObject* py_p2s_map;
+  double sums[3][3];
+  double *fc;
+  int *s2p;
+  int *p2s;
+  int *perms;
+  int n_patom, n_satom, nsym, i_p, i, j, k, l, m, n, target;
+  int *nsym_list;
+  int *s2pp;
+  double *fc_tmp;
+
+  nsym_list = NULL;
+  s2pp = NULL;
+  fc_tmp = NULL;
+
+  if (!PyArg_ParseTuple(args, "OOOO",
+                        &py_fc,
+                        &py_permutations,
+                        &py_s2p_map,
+                        &py_p2s_map)) {
+    return NULL;
+  }
+
+  fc = (double*)PyArray_DATA(py_fc);
+  perms = (int*)PyArray_DATA(py_permutations);
+  s2p = (int*)PyArray_DATA(py_s2p_map);
+  p2s = (int*)PyArray_DATA(py_p2s_map);
+  n_patom = PyArray_DIMS(py_fc)[0];
+  n_satom = PyArray_DIMS(py_fc)[1];
+  nsym = PyArray_DIMS(py_permutations)[0];
+
+  nsym_list = (int*) malloc(sizeof(int) * n_satom);
+  for (i = 0; i < n_satom; i++) {
+    nsym_list[i] = -1;
+  }
+
+  s2pp = (int*) malloc(sizeof(int) * n_satom);
+  for (i = 0; i < n_satom; i++) {
+    s2pp[i] = -1;
+    for (j = 0; j < n_patom; j++) {
+      if (p2s[j] == s2p[i]) {
+        s2pp[i] = j;
+        break;
+      }
+    }
+  }
+
+  fc_tmp = (double*) malloc(sizeof(double) * n_patom * n_satom * 3 * 3);
+  for (i = 0; i < n_patom * n_satom * 3 * 3; i++) {
+    fc_tmp[i] = 0;
+  }
+
+  for (i = 0; i < n_satom; i++) {
+    target = s2p[i];
+    for (j = 0; j < nsym; j++) {
+      if (perms[j * n_satom + i] == target) {
+        nsym_list[i] = j;
+        break;
+      }
+    }
+  }
+
+#pragma omp parallel for private(i_p, i, k, l, m, n)
+  for (j = 0; j < n_satom; j++) {
+    for (i_p = 0; i_p < n_patom; i_p++) {
+      i = p2s[i_p];
+      if (i == j) { /* diagnoal part */
+        for (k = 0; k < 3; k++) {
+          for (l = 0; l < 3; l++) {
+            m = i_p * n_satom * 9 + i * 9 + k * 3 + l;
+            n = i_p * n_satom * 9 + i * 9 + l * 3 + k;
+            fc_tmp[m] = (fc[m] + fc[n]) / 2;
+          }
+        }
+      } else { /* non diagonal part */
+        for (k = 0; k < 3; k++) {
+          for (l = 0; l < 3; l++) {
+            m = i_p * n_satom * 9 + j * 9 + k * 3 + l;
+            n = s2pp[j] * n_satom * 9 + perms[nsym_list[j] * n_satom + i] * 9 + l * 3 + k;
+            fc_tmp[m] = (fc[n] + fc[m]) / 2;
+          }
+        }
+      }
+    }
+  }
+
+  for (i_p = 0; i_p < n_patom; i_p++) {
+    for (k = 0; k < 3; k++) {
+      for (l = 0; l < 3; l++) {
+        sums[k][l] = 0;
+        m = i_p * n_satom * 9 + k * 3 + l;
+        for (j = 0; j < n_satom; j++) {
+          if (p2s[i_p] != j) {
+            sums[k][l] += fc_tmp[m];
+          }
+          m += 9;
+        }
+      }
+    }
+    for (k = 0; k < 3; k++) {
+      for (l = 0; l < 3; l++) {
+        fc_tmp[i_p * n_satom * 9 + p2s[i_p] * 9 + k * 3 + l] =
+          -(sums[k][l] + sums[l][k]) / 2;
+      }
+    }
+  }
+
+  for (i = 0; i < n_patom * n_satom * 3 * 3; i++) {
+    fc[i] = fc_tmp[i];
+  }
+
+  free(nsym_list);
+  nsym_list = NULL;
+  free(s2pp);
+  s2pp = NULL;
+  free(fc_tmp);
+  fc_tmp = NULL;
+
+  Py_RETURN_NONE;
+}
 
 static PyObject * py_get_dynamical_matrix(PyObject *self, PyObject *args)
 {
-  PyArrayObject* dynamical_matrix;
-  PyArrayObject* force_constants;
-  PyArrayObject* r_vector;
-  PyArrayObject* q_vector;
-  PyArrayObject* multiplicity;
-  PyArrayObject* mass;
-  PyArrayObject* super2prim_map;
-  PyArrayObject* prim2super_map;
+  PyArrayObject* py_dynamical_matrix;
+  PyArrayObject* py_force_constants;
+  PyArrayObject* py_shortest_vectors;
+  PyArrayObject* py_q;
+  PyArrayObject* py_multiplicities;
+  PyArrayObject* py_masses;
+  PyArrayObject* py_s2p_map;
+  PyArrayObject* py_p2s_map;
+
+  double* dm;
+  double* fc;
+  double* q;
+  double (*svecs)[27][3];
+  double* m;
+  int* multi;
+  int* s2p_map;
+  int* p2s_map;
+  int num_patom;
+  int num_satom;
 
   if (!PyArg_ParseTuple(args, "OOOOOOOO",
-			&dynamical_matrix,
-			&force_constants,
-			&q_vector,
-			&r_vector,
-			&multiplicity,
-			&mass,
-			&super2prim_map,
-			&prim2super_map))
+                        &py_dynamical_matrix,
+                        &py_force_constants,
+                        &py_q,
+                        &py_shortest_vectors,
+                        &py_multiplicities,
+                        &py_masses,
+                        &py_s2p_map,
+                        &py_p2s_map)) {
     return NULL;
+  }
 
-  double* dm = (double*)PyArray_DATA(dynamical_matrix);
-  const double* fc = (double*)PyArray_DATA(force_constants);
-  const double* q = (double*)PyArray_DATA(q_vector);
-  const double* r = (double*)PyArray_DATA(r_vector);
-  const double* m = (double*)PyArray_DATA(mass);
-  const int* multi = (int*)PyArray_DATA(multiplicity);
-  const int* s2p_map = (int*)PyArray_DATA(super2prim_map);
-  const int* p2s_map = (int*)PyArray_DATA(prim2super_map);
-  const int num_patom = PyArray_DIMS(prim2super_map)[0];
-  const int num_satom = PyArray_DIMS(super2prim_map)[0];
+  dm = (double*)PyArray_DATA(py_dynamical_matrix);
+  fc = (double*)PyArray_DATA(py_force_constants);
+  q = (double*)PyArray_DATA(py_q);
+  svecs = (double(*)[27][3])PyArray_DATA(py_shortest_vectors);
+  m = (double*)PyArray_DATA(py_masses);
+  multi = (int*)PyArray_DATA(py_multiplicities);
+  s2p_map = (int*)PyArray_DATA(py_s2p_map);
+  p2s_map = (int*)PyArray_DATA(py_p2s_map);
+  num_patom = PyArray_DIMS(py_p2s_map)[0];
+  num_satom = PyArray_DIMS(py_s2p_map)[0];
 
-  get_dynamical_matrix_at_q(dm,
-			    num_patom,
-			    num_satom,
-			    fc,
-			    q,
-			    r,
-			    multi,
-			    m,
-			    s2p_map,
-			    p2s_map,
-			    NULL,
-			    1);
+  dym_get_dynamical_matrix_at_q(dm,
+                                num_patom,
+                                num_satom,
+                                fc,
+                                q,
+                                svecs,
+                                multi,
+                                m,
+                                s2p_map,
+                                p2s_map,
+                                NULL,
+                                1);
 
   Py_RETURN_NONE;
 }
@@ -233,66 +578,200 @@ static PyObject * py_get_dynamical_matrix(PyObject *self, PyObject *args)
 
 static PyObject * py_get_nac_dynamical_matrix(PyObject *self, PyObject *args)
 {
-  PyArrayObject* dynamical_matrix;
-  PyArrayObject* force_constants;
-  PyArrayObject* r_vector;
-  PyArrayObject* q_cart_vector;
-  PyArrayObject* q_vector;
-  PyArrayObject* multiplicity;
-  PyArrayObject* mass;
-  PyArrayObject* super2prim_map;
-  PyArrayObject* prim2super_map;
-  PyArrayObject* born;
+  PyArrayObject* py_dynamical_matrix;
+  PyArrayObject* py_force_constants;
+  PyArrayObject* py_shortest_vectors;
+  PyArrayObject* py_q_cart;
+  PyArrayObject* py_q;
+  PyArrayObject* py_multiplicities;
+  PyArrayObject* py_masses;
+  PyArrayObject* py_s2p_map;
+  PyArrayObject* py_p2s_map;
+  PyArrayObject* py_born;
   double factor;
 
-  if (!PyArg_ParseTuple(args, "OOOOOOOOOOd",
-			&dynamical_matrix,
-			&force_constants,
-			&q_vector,
-			&r_vector,
-			&multiplicity,
-			&mass,
-			&super2prim_map,
-			&prim2super_map,
-			&q_cart_vector,
-			&born,
-			&factor))
-    return NULL;
-
-  double* dm = (double*)PyArray_DATA(dynamical_matrix);
-  const double* fc = (double*)PyArray_DATA(force_constants);
-  const double* q_cart = (double*)PyArray_DATA(q_cart_vector);
-  const double* q = (double*)PyArray_DATA(q_vector);
-  const double* r = (double*)PyArray_DATA(r_vector);
-  const double* m = (double*)PyArray_DATA(mass);
-  const double* z = (double*)PyArray_DATA(born);
-  const int* multi = (int*)PyArray_DATA(multiplicity);
-  const int* s2p_map = (int*)PyArray_DATA(super2prim_map);
-  const int* p2s_map = (int*)PyArray_DATA(prim2super_map);
-  const int num_patom = PyArray_DIMS(prim2super_map)[0];
-  const int num_satom = PyArray_DIMS(super2prim_map)[0];
+  double* dm;
+  double* fc;
+  double* q_cart;
+  double* q;
+  double (*svecs)[27][3];
+  double* m;
+  double (*born)[3][3];
+  int* multi;
+  int* s2p_map;
+  int* p2s_map;
+  int num_patom;
+  int num_satom;
 
   int n;
-  double *charge_sum;
+  double (*charge_sum)[3][3];
 
-  charge_sum = (double*) malloc(sizeof(double) * num_patom * num_patom * 9);
+  if (!PyArg_ParseTuple(args, "OOOOOOOOOOd",
+                        &py_dynamical_matrix,
+                        &py_force_constants,
+                        &py_q,
+                        &py_shortest_vectors,
+                        &py_multiplicities,
+                        &py_masses,
+                        &py_s2p_map,
+                        &py_p2s_map,
+                        &py_q_cart,
+                        &py_born,
+                        &factor))
+    return NULL;
+
+  dm = (double*)PyArray_DATA(py_dynamical_matrix);
+  fc = (double*)PyArray_DATA(py_force_constants);
+  q_cart = (double*)PyArray_DATA(py_q_cart);
+  q = (double*)PyArray_DATA(py_q);
+  svecs = (double(*)[27][3])PyArray_DATA(py_shortest_vectors);
+  m = (double*)PyArray_DATA(py_masses);
+  born = (double(*)[3][3])PyArray_DATA(py_born);
+  multi = (int*)PyArray_DATA(py_multiplicities);
+  s2p_map = (int*)PyArray_DATA(py_s2p_map);
+  p2s_map = (int*)PyArray_DATA(py_p2s_map);
+  num_patom = PyArray_DIMS(py_p2s_map)[0];
+  num_satom = PyArray_DIMS(py_s2p_map)[0];
+
+  charge_sum = (double(*)[3][3])
+    malloc(sizeof(double[3][3]) * num_patom * num_patom);
   n = num_satom / num_patom;
 
-  get_charge_sum(charge_sum, num_patom, factor / n, q_cart, z);
-  get_dynamical_matrix_at_q(dm,
-			    num_patom,
-			    num_satom,
-			    fc,
-			    q,
-			    r,
-			    multi,
-			    m,
-			    s2p_map,
-			    p2s_map,
-			    charge_sum,
-			    1);
+  dym_get_charge_sum(charge_sum, num_patom, factor / n, q_cart, born);
+  dym_get_dynamical_matrix_at_q(dm,
+                                num_patom,
+                                num_satom,
+                                fc,
+                                q,
+                                svecs,
+                                multi,
+                                m,
+                                s2p_map,
+                                p2s_map,
+                                charge_sum,
+                                1);
 
   free(charge_sum);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_get_dipole_dipole(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_dd;
+  PyArrayObject* py_dd_q0;
+  PyArrayObject* py_G_list;
+  PyArrayObject* py_q_cart;
+  PyArrayObject* py_q_direction;
+  PyArrayObject* py_born;
+  PyArrayObject* py_dielectric;
+  PyArrayObject* py_positions;
+  double factor;
+  double lambda;
+  double tolerance;
+
+  double* dd;
+  double* dd_q0;
+  double (*G_list)[3];
+  double* q_vector;
+  double* q_direction;
+  double (*born)[3][3];
+  double (*dielectric)[3];
+  double (*pos)[3];
+  int num_patom, num_G;
+
+  if (!PyArg_ParseTuple(args, "OOOOOOOOddd",
+                        &py_dd,
+                        &py_dd_q0,
+                        &py_G_list,
+                        &py_q_cart,
+                        &py_q_direction,
+                        &py_born,
+                        &py_dielectric,
+                        &py_positions,
+                        &factor,
+                        &lambda,
+                        &tolerance))
+    return NULL;
+
+
+  dd = (double*)PyArray_DATA(py_dd);
+  dd_q0 = (double*)PyArray_DATA(py_dd_q0);
+  G_list = (double(*)[3])PyArray_DATA(py_G_list);
+  if ((PyObject*)py_q_direction == Py_None) {
+    q_direction = NULL;
+  } else {
+    q_direction = (double*)PyArray_DATA(py_q_direction);
+  }
+  q_vector = (double*)PyArray_DATA(py_q_cart);
+  born = (double(*)[3][3])PyArray_DATA(py_born);
+  dielectric = (double(*)[3])PyArray_DATA(py_dielectric);
+  pos = (double(*)[3])PyArray_DATA(py_positions);
+  num_G = PyArray_DIMS(py_G_list)[0];
+  num_patom = PyArray_DIMS(py_positions)[0];
+
+  dym_get_dipole_dipole(dd, /* [natom, 3, natom, 3, (real, imag)] */
+                        dd_q0, /* [natom, 3, 3, (real, imag)] */
+                        G_list, /* [num_kvec, 3] */
+                        num_G,
+                        num_patom,
+                        q_vector,
+                        q_direction,
+                        born,
+                        dielectric,
+                        pos, /* [natom, 3] */
+                        factor, /* 4pi/V*unit-conv */
+                        lambda, /* 4 * Lambda^2 */
+                        tolerance);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_get_dipole_dipole_q0(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_dd_q0;
+  PyArrayObject* py_G_list;
+  PyArrayObject* py_born;
+  PyArrayObject* py_dielectric;
+  PyArrayObject* py_positions;
+  double lambda;
+  double tolerance;
+
+  double* dd_q0;
+  double (*G_list)[3];
+  double (*born)[3][3];
+  double (*dielectric)[3];
+  double (*pos)[3];
+  int num_patom, num_G;
+
+  if (!PyArg_ParseTuple(args, "OOOOOdd",
+                        &py_dd_q0,
+                        &py_G_list,
+                        &py_born,
+                        &py_dielectric,
+                        &py_positions,
+                        &lambda,
+                        &tolerance))
+    return NULL;
+
+
+  dd_q0 = (double*)PyArray_DATA(py_dd_q0);
+  G_list = (double(*)[3])PyArray_DATA(py_G_list);
+  born = (double(*)[3][3])PyArray_DATA(py_born);
+  dielectric = (double(*)[3])PyArray_DATA(py_dielectric);
+  pos = (double(*)[3])PyArray_DATA(py_positions);
+  num_G = PyArray_DIMS(py_G_list)[0];
+  num_patom = PyArray_DIMS(py_positions)[0];
+
+  dym_get_dipole_dipole_q0(dd_q0, /* [natom, 3, 3, (real, imag)] */
+                           G_list, /* [num_kvec, 3] */
+                           num_G,
+                           num_patom,
+                           born,
+                           dielectric,
+                           pos, /* [natom, 3] */
+                           lambda, /* 4 * Lambda^2 */
+                           tolerance);
 
   Py_RETURN_NONE;
 }
@@ -300,54 +779,68 @@ static PyObject * py_get_nac_dynamical_matrix(PyObject *self, PyObject *args)
 static PyObject * py_get_derivative_dynmat(PyObject *self, PyObject *args)
 {
   PyArrayObject* derivative_dynmat;
-  PyArrayObject* force_constants;
+  PyArrayObject* py_force_constants;
   PyArrayObject* r_vector;
   PyArrayObject* lattice;
   PyArrayObject* q_vector;
-  PyArrayObject* multiplicity;
-  PyArrayObject* mass;
-  PyArrayObject* super2prim_map;
-  PyArrayObject* prim2super_map;
-  PyArrayObject* born;
+  PyArrayObject* py_multiplicities;
+  PyArrayObject* py_masses;
+  PyArrayObject* py_s2p_map;
+  PyArrayObject* py_p2s_map;
+  PyArrayObject* py_born;
   PyArrayObject* dielectric;
   PyArrayObject* q_direction;
   double nac_factor;
 
-  if (!PyArg_ParseTuple(args, "OOOOOOOOOdOOO",
-			&derivative_dynmat,
-			&force_constants,
-			&q_vector,
-			&lattice, /* column vectors */
-			&r_vector,
-			&multiplicity,
-			&mass,
-			&super2prim_map,
-			&prim2super_map,
-			&nac_factor,
-			&born,
-			&dielectric,
-			&q_direction)) {
-    return NULL;
-  }
+  double* ddm;
+  double* fc;
+  double* q;
+  double* lat;
+  double* r;
+  double* m;
+  int* multi;
+  int* s2p_map;
+  int* p2s_map;
+  int num_patom;
+  int num_satom;
 
-  double* ddm = (double*)PyArray_DATA(derivative_dynmat);
-  const double* fc = (double*)PyArray_DATA(force_constants);
-  const double* q = (double*)PyArray_DATA(q_vector);
-  const double* lat = (double*)PyArray_DATA(lattice);
-  const double* r = (double*)PyArray_DATA(r_vector);
-  const double* m = (double*)PyArray_DATA(mass);
-  const int* multi = (int*)PyArray_DATA(multiplicity);
-  const int* s2p_map = (int*)PyArray_DATA(super2prim_map);
-  const int* p2s_map = (int*)PyArray_DATA(prim2super_map);
-  const int num_patom = PyArray_DIMS(prim2super_map)[0];
-  const int num_satom = PyArray_DIMS(super2prim_map)[0];
   double *z;
   double *epsilon;
   double *q_dir;
-  if ((PyObject*)born == Py_None) {
+
+  if (!PyArg_ParseTuple(args, "OOOOOOOOOdOOO",
+                        &derivative_dynmat,
+                        &py_force_constants,
+                        &q_vector,
+                        &lattice, /* column vectors */
+                        &r_vector,
+                        &py_multiplicities,
+                        &py_masses,
+                        &py_s2p_map,
+                        &py_p2s_map,
+                        &nac_factor,
+                        &py_born,
+                        &dielectric,
+                        &q_direction)) {
+    return NULL;
+  }
+
+  ddm = (double*)PyArray_DATA(derivative_dynmat);
+  fc = (double*)PyArray_DATA(py_force_constants);
+  q = (double*)PyArray_DATA(q_vector);
+  lat = (double*)PyArray_DATA(lattice);
+  r = (double*)PyArray_DATA(r_vector);
+  m = (double*)PyArray_DATA(py_masses);
+  multi = (int*)PyArray_DATA(py_multiplicities);
+  s2p_map = (int*)PyArray_DATA(py_s2p_map);
+  p2s_map = (int*)PyArray_DATA(py_p2s_map);
+  num_patom = PyArray_DIMS(py_p2s_map)[0];
+  num_satom = PyArray_DIMS(py_s2p_map)[0];
+
+  if ((PyObject*)py_born == Py_None) {
     z = NULL;
   } else {
-    z = (double*)PyArray_DATA(born);
+    z = (double*)PyArray_DATA(py_born);
   }
   if ((PyObject*)dielectric == Py_None) {
     epsilon = NULL;
@@ -361,20 +854,20 @@ static PyObject * py_get_derivative_dynmat(PyObject *self, PyObject *args)
   }
 
   get_derivative_dynmat_at_q(ddm,
-			     num_patom,
-			     num_satom,
-			     fc,
-			     q,
-			     lat,
-			     r,
-			     multi,
-			     m,
-			     s2p_map,
-			     p2s_map,
-			     nac_factor,
-			     z,
-			     epsilon,
-			     q_dir);
+                             num_patom,
+                             num_satom,
+                             fc,
+                             q,
+                             lat,
+                             r,
+                             multi,
+                             m,
+                             s2p_map,
+                             p2s_map,
+                             nac_factor,
+                             z,
+                             epsilon,
+                             q_dir);
 
   Py_RETURN_NONE;
 }
@@ -382,54 +875,501 @@ static PyObject * py_get_derivative_dynmat(PyObject *self, PyObject *args)
 /* Thermal properties */
 static PyObject * py_get_thermal_properties(PyObject *self, PyObject *args)
 {
-  double temperature;
-  PyArrayObject* frequencies;
-  PyArrayObject* weights;
+  PyArrayObject* py_thermal_props;
+  PyArrayObject* py_temperatures;
+  PyArrayObject* py_frequencies;
+  PyArrayObject* py_weights;
 
-  if (!PyArg_ParseTuple(args, "dOO",
-			&temperature,
-			&frequencies,
-			&weights)) {
+  double *temperatures;
+  double* freqs;
+  double *thermal_props;
+  int* w;
+  int num_qpoints;
+  int num_bands;
+  int num_temp;
+
+  int i, j, k;
+  long sum_weights;
+  double omega;
+  double *tp;
+
+  if (!PyArg_ParseTuple(args, "OOOO",
+                        &py_thermal_props,
+                        &py_temperatures,
+                        &py_frequencies,
+                        &py_weights)) {
     return NULL;
   }
 
-  const double* freqs = (double*)PyArray_DATA(frequencies);
-  const int* w = (int*)PyArray_DATA(weights);
-  const int num_qpoints = PyArray_DIMS(frequencies)[0];
-  const int num_bands = PyArray_DIMS(frequencies)[1];
+  thermal_props = (double*)PyArray_DATA(py_thermal_props);
+  temperatures = (double*)PyArray_DATA(py_temperatures);
+  num_temp = PyArray_DIMS(py_temperatures)[0];
+  freqs = (double*)PyArray_DATA(py_frequencies);
+  num_qpoints = PyArray_DIMS(py_frequencies)[0];
+  w = (int*)PyArray_DATA(py_weights);
+  num_bands = PyArray_DIMS(py_frequencies)[1];
 
-  int i, j;
-  long sum_weights = 0;
-  double free_energy = 0;
-  double entropy = 0;
-  double heat_capacity = 0;
-  double omega = 0;
+  for (i = 0; i < num_temp * 3; i++) {
+    thermal_props[i] = 0;
+  }
 
-#pragma omp parallel for private(j, omega) reduction(+:free_energy, entropy, heat_capacity)
+  tp = (double*)malloc(sizeof(double) * num_qpoints * num_temp * 3);
+  for (i = 0; i < num_qpoints * num_temp * 3; i++) {
+    tp[i] = 0;
+  }
+
+#pragma omp parallel for private(j, k, omega)
   for (i = 0; i < num_qpoints; i++){
-    for (j = 0; j < num_bands; j++){
-      omega = freqs[i * num_bands + j];
-      if (omega > 0.0) {
-	free_energy += get_free_energy_omega(temperature, omega) * w[i];
-	entropy += get_entropy_omega(temperature, omega) * w[i];
-	heat_capacity += get_heat_capacity_omega(temperature, omega)* w[i];
+    for (j = 0; j < num_temp; j++) {
+      for (k = 0; k < num_bands; k++){
+        omega = freqs[i * num_bands + k];
+        if (temperatures[j] > 0 && omega > 0.0) {
+          tp[i * num_temp * 3 + j * 3] +=
+            get_free_energy_omega(temperatures[j], omega) * w[i];
+          tp[i * num_temp * 3 + j * 3 + 1] +=
+            get_entropy_omega(temperatures[j], omega) * w[i];
+          tp[i * num_temp * 3 + j * 3 + 2] +=
+            get_heat_capacity_omega(temperatures[j], omega)* w[i];
+        }
       }
     }
   }
 
+  for (i = 0; i < num_temp * 3; i++) {
+    for (j = 0; j < num_qpoints; j++) {
+      thermal_props[i] += tp[j * num_temp * 3 + i];
+    }
+  }
+
+  free(tp);
+
+  sum_weights = 0;
 #pragma omp parallel for reduction(+:sum_weights)
   for (i = 0; i < num_qpoints; i++){
     sum_weights += w[i];
   }
 
-  return PyTuple_Pack(3,
-		      PyFloat_FromDouble(free_energy / sum_weights),
-		      PyFloat_FromDouble(entropy / sum_weights),
-		      PyFloat_FromDouble(heat_capacity / sum_weights));
+  for (i = 0; i < num_temp * 3; i++) {
+    thermal_props[i] /= sum_weights;
+  }
+
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+py_distribute_fc2_with_mappings(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_force_constants;
+  PyArrayObject* py_permutations;
+  PyArrayObject* py_map_atoms;
+  PyArrayObject* py_map_syms;
+  PyArrayObject* py_atom_list;
+  PyArrayObject* py_rotations_cart;
+
+  double (*r_carts)[3][3];
+  double (*fc2)[3][3];
+  int *permutations;
+  int *map_atoms;
+  int *map_syms;
+  int *atom_list;
+  int num_pos, num_rot, len_atom_list;
+
+  if (!PyArg_ParseTuple(args, "OOOOOO",
+                        &py_force_constants,
+                        &py_atom_list,
+                        &py_rotations_cart,
+                        &py_permutations,
+                        &py_map_atoms,
+                        &py_map_syms)) {
+    return NULL;
+  }
+
+  fc2 = (double(*)[3][3])PyArray_DATA(py_force_constants);
+  atom_list = (int*)PyArray_DATA(py_atom_list);
+  len_atom_list = PyArray_DIMS(py_atom_list)[0];
+  permutations = (int*)PyArray_DATA(py_permutations);
+  map_atoms = (int*)PyArray_DATA(py_map_atoms);
+  map_syms = (int*)PyArray_DATA(py_map_syms);
+  r_carts = (double(*)[3][3])PyArray_DATA(py_rotations_cart);
+  num_rot = PyArray_DIMS(py_permutations)[0];
+  num_pos = PyArray_DIMS(py_permutations)[1];
+
+  if (PyArray_NDIM(py_map_atoms) != 1 || PyArray_DIMS(py_map_atoms)[0] != num_pos)
+  {
+    PyErr_SetString(PyExc_ValueError, "wrong shape for map_atoms");
+    return NULL;
+  }
+
+  if (PyArray_NDIM(py_map_syms) != 1 || PyArray_DIMS(py_map_syms)[0] != num_pos)
+  {
+    PyErr_SetString(PyExc_ValueError, "wrong shape for map_syms");
+    return NULL;
+  }
+
+  if (PyArray_DIMS(py_rotations_cart)[0] != num_rot)
+  {
+    PyErr_SetString(PyExc_ValueError, "permutations and rotations are different length");
+    return NULL;
+  }
+
+  distribute_fc2_with_mappings(fc2,
+                               atom_list,
+                               len_atom_list,
+                               r_carts,
+                               permutations,
+                               map_atoms,
+                               map_syms,
+                               num_rot,
+                               num_pos);
+  Py_RETURN_NONE;
+}
+
+static PyObject *py_thm_neighboring_grid_points(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_relative_grid_points;
+  PyArrayObject* py_relative_grid_address;
+  PyArrayObject* py_mesh;
+  PyArrayObject* py_bz_grid_address;
+  PyArrayObject* py_bz_map;
+  int grid_point;
+
+  int* relative_grid_points;
+  int (*relative_grid_address)[3];
+  int num_relative_grid_address;
+  int *mesh;
+  int (*bz_grid_address)[3];
+  int *bz_map;
+
+  if (!PyArg_ParseTuple(args, "OiOOOO",
+                        &py_relative_grid_points,
+                        &grid_point,
+                        &py_relative_grid_address,
+                        &py_mesh,
+                        &py_bz_grid_address,
+                        &py_bz_map)) {
+    return NULL;
+  }
+
+  relative_grid_points = (int*)PyArray_DATA(py_relative_grid_points);
+  relative_grid_address = (int(*)[3])PyArray_DATA(py_relative_grid_address);
+  num_relative_grid_address = PyArray_DIMS(py_relative_grid_address)[0];
+  mesh = (int*)PyArray_DATA(py_mesh);
+  bz_grid_address = (int(*)[3])PyArray_DATA(py_bz_grid_address);
+  bz_map = (int*)PyArray_DATA(py_bz_map);
+
+  thm_get_neighboring_grid_points(relative_grid_points,
+                                  grid_point,
+                                  relative_grid_address,
+                                  num_relative_grid_address,
+                                  mesh,
+                                  bz_grid_address,
+                                  bz_map);
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+py_thm_relative_grid_address(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_relative_grid_address;
+  PyArrayObject* py_reciprocal_lattice_py;
+
+  int (*relative_grid_address)[4][3];
+  double (*reciprocal_lattice)[3];
+
+  if (!PyArg_ParseTuple(args, "OO",
+                        &py_relative_grid_address,
+                        &py_reciprocal_lattice_py)) {
+    return NULL;
+  }
+
+  relative_grid_address = (int(*)[4][3])PyArray_DATA(py_relative_grid_address);
+  reciprocal_lattice = (double(*)[3])PyArray_DATA(py_reciprocal_lattice_py);
+
+  thm_get_relative_grid_address(relative_grid_address, reciprocal_lattice);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+py_thm_all_relative_grid_address(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_relative_grid_address;
+
+  int (*relative_grid_address)[24][4][3];
+
+  if (!PyArg_ParseTuple(args, "O",
+                        &py_relative_grid_address)) {
+    return NULL;
+  }
+
+  relative_grid_address =
+    (int(*)[24][4][3])PyArray_DATA(py_relative_grid_address);
+
+  thm_get_all_relative_grid_address(relative_grid_address);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject *
+py_thm_integration_weight(PyObject *self, PyObject *args)
+{
+  double omega;
+  PyArrayObject* py_tetrahedra_omegas;
+  char* function;
+
+  double (*tetrahedra_omegas)[4];
+  double iw;
+
+  if (!PyArg_ParseTuple(args, "dOs",
+                        &omega,
+                        &py_tetrahedra_omegas,
+                        &function)) {
+    return NULL;
+  }
+
+  tetrahedra_omegas = (double(*)[4])PyArray_DATA(py_tetrahedra_omegas);
+
+  iw = thm_get_integration_weight(omega,
+                                  tetrahedra_omegas,
+                                  function[0]);
+
+  return PyFloat_FromDouble(iw);
+}
+
+static PyObject *
+py_thm_integration_weight_at_omegas(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_integration_weights;
+  PyArrayObject* py_omegas;
+  PyArrayObject* py_tetrahedra_omegas;
+  char* function;
+
+  double *omegas;
+  double *iw;
+  int num_omegas;
+  double (*tetrahedra_omegas)[4];
+
+  if (!PyArg_ParseTuple(args, "OOOs",
+                        &py_integration_weights,
+                        &py_omegas,
+                        &py_tetrahedra_omegas,
+                        &function)) {
+    return NULL;
+  }
+
+  omegas = (double*)PyArray_DATA(py_omegas);
+  iw = (double*)PyArray_DATA(py_integration_weights);
+  num_omegas = (int)PyArray_DIMS(py_omegas)[0];
+  tetrahedra_omegas = (double(*)[4])PyArray_DATA(py_tetrahedra_omegas);
+
+  thm_get_integration_weight_at_omegas(iw,
+                                       num_omegas,
+                                       omegas,
+                                       tetrahedra_omegas,
+                                       function[0]);
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_get_tetrahedra_frequenies(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_freq_tetras;
+  PyArrayObject* py_grid_points;
+  PyArrayObject* py_mesh;
+  PyArrayObject* py_grid_address;
+  PyArrayObject* py_gp_ir_index;
+  PyArrayObject* py_relative_grid_address;
+  PyArrayObject* py_frequencies;
+
+  double* freq_tetras;
+  int* grid_points;
+  int num_gp_in;
+  int* mesh;
+  int (*grid_address)[3];
+  int* gp_ir_index;
+  int (*relative_grid_address)[3];
+  double* frequencies;
+  int num_band;
+
+  int is_shift[3] = {0, 0, 0};
+  int i, j, k, gp;
+  int g_addr[3];
+  int address_double[3];
+
+  if (!PyArg_ParseTuple(args, "OOOOOOO",
+                        &py_freq_tetras,
+                        &py_grid_points,
+                        &py_mesh,
+                        &py_grid_address,
+                        &py_gp_ir_index,
+                        &py_relative_grid_address,
+                        &py_frequencies)) {
+    return NULL;
+  }
+
+  freq_tetras = (double*)PyArray_DATA(py_freq_tetras);
+  grid_points = (int*)PyArray_DATA(py_grid_points);
+  num_gp_in = (int)PyArray_DIMS(py_grid_points)[0];
+  mesh = (int*)PyArray_DATA(py_mesh);
+  grid_address = (int(*)[3])PyArray_DATA(py_grid_address);
+  gp_ir_index = (int*)PyArray_DATA(py_gp_ir_index);
+  relative_grid_address = (int(*)[3])PyArray_DATA(py_relative_grid_address);
+  frequencies = (double*)PyArray_DATA(py_frequencies);
+  num_band = (int)PyArray_DIMS(py_frequencies)[1];
+
+  for (i = 0; i < num_gp_in;  i++) {
+#pragma omp parallel for private(k, g_addr, gp, address_double)
+    for (j = 0; j < num_band * 96; j++) {
+      for (k = 0; k < 3; k++) {
+        g_addr[k] = grid_address[grid_points[i]][k] +
+          relative_grid_address[j % 96][k];
+      }
+      kgd_get_grid_address_double_mesh(address_double,
+                                       g_addr,
+                                       mesh,
+                                       is_shift);
+      gp = kgd_get_grid_point_double_mesh(address_double, mesh);
+      freq_tetras[i * num_band * 96 + j] =
+        frequencies[gp_ir_index[gp] * num_band + j / 96];
+    }
+  }
+
+  Py_RETURN_NONE;
+}
+
+static PyObject * py_tetrahedron_method_dos(PyObject *self, PyObject *args)
+{
+  PyArrayObject* py_dos;
+  PyArrayObject* py_mesh;
+  PyArrayObject* py_freq_points;
+  PyArrayObject* py_frequencies;
+  PyArrayObject* py_coef;
+  PyArrayObject* py_grid_address;
+  PyArrayObject* py_grid_mapping_table;
+  PyArrayObject* py_relative_grid_address;
+
+  double *dos;
+  int* mesh;
+  double* freq_points;
+  int num_freq_points;
+  double* frequencies;
+  double* coef;
+  int (*grid_address)[3];
+  int num_gp;
+  int num_ir_gp;
+  int num_coef;
+  int num_band;
+  int* grid_mapping_table;
+  int (*relative_grid_address)[4][3];
+
+  int is_shift[3] = {0, 0, 0};
+  int i, j, k, l, m, q, r, count;
+  int g_addr[3];
+  int ir_gps[24][4];
+  double tetrahedra[24][4];
+  int address_double[3];
+  int *gp2ir, *ir_grid_points, *weights;
+  double iw;
+
+  gp2ir = NULL;
+  ir_grid_points = NULL;
+  weights = NULL;
+
+  if (!PyArg_ParseTuple(args, "OOOOOOOO",
+                        &py_dos,
+                        &py_mesh,
+                        &py_freq_points,
+                        &py_frequencies,
+                        &py_coef,
+                        &py_grid_address,
+                        &py_grid_mapping_table,
+                        &py_relative_grid_address)) {
+    return NULL;
+  }
+
+  /* dos[num_ir_gp][num_band][num_freq_points][num_coef] */
+  dos = (double*)PyArray_DATA(py_dos);
+  mesh = (int*)PyArray_DATA(py_mesh);
+  freq_points = (double*)PyArray_DATA(py_freq_points);
+  num_freq_points = (int)PyArray_DIMS(py_freq_points)[0];
+  frequencies = (double*)PyArray_DATA(py_frequencies);
+  num_ir_gp = (int)PyArray_DIMS(py_frequencies)[0];
+  num_band = (int)PyArray_DIMS(py_frequencies)[1];
+  coef = (double*)PyArray_DATA(py_coef);
+  num_coef = (int)PyArray_DIMS(py_coef)[1];
+  grid_address = (int(*)[3])PyArray_DATA(py_grid_address);
+  num_gp = (int)PyArray_DIMS(py_grid_address)[0];
+  grid_mapping_table = (int*)PyArray_DATA(py_grid_mapping_table);
+  relative_grid_address = (int(*)[4][3])PyArray_DATA(py_relative_grid_address);
+
+  gp2ir = (int*)malloc(sizeof(int) * num_gp);
+  ir_grid_points = (int*)malloc(sizeof(int) * num_ir_gp);
+  weights = (int*)malloc(sizeof(int) * num_ir_gp);
+
+  count = 0;
+  for (i = 0; i < num_gp; i++) {
+    if (grid_mapping_table[i] == i) {
+      gp2ir[i] = count;
+      ir_grid_points[count] = i;
+      weights[count] = 1;
+      count++;
+    } else {
+      gp2ir[i] = gp2ir[grid_mapping_table[i]];
+      weights[gp2ir[i]]++;
+    }
+  }
+
+  if (num_ir_gp != count) {
+    printf("Something is wrong!\n");
+  }
+
+#pragma omp parallel for private(j, k, l, m, q, r, iw, ir_gps, g_addr, tetrahedra, address_double)
+  for (i = 0; i < num_ir_gp; i++) {
+    /* set 24 tetrahedra */
+    for (l = 0; l < 24; l++) {
+      for (q = 0; q < 4; q++) {
+        for (r = 0; r < 3; r++) {
+          g_addr[r] = grid_address[ir_grid_points[i]][r] +
+            relative_grid_address[l][q][r];
+        }
+        kgd_get_grid_address_double_mesh(address_double,
+                                         g_addr,
+                                         mesh,
+                                         is_shift);
+        ir_gps[l][q] = gp2ir[kgd_get_grid_point_double_mesh(address_double, mesh)];
+      }
+    }
+
+    for (k = 0; k < num_band; k++) {
+      for (l = 0; l < 24; l++) {
+        for (q = 0; q < 4; q++) {
+          tetrahedra[l][q] = frequencies[ir_gps[l][q] * num_band + k];
+        }
+      }
+      for (j = 0; j < num_freq_points; j++) {
+        iw = thm_get_integration_weight(freq_points[j], tetrahedra, 'I') * weights[i];
+        for (m = 0; m < num_coef; m++) {
+          dos[i * num_band * num_freq_points * num_coef +
+              k * num_coef * num_freq_points + j * num_coef + m] +=
+            iw * coef[i * num_coef * num_band + m * num_band + k];
+        }
+      }
+    }
+  }
+
+  free(gp2ir);
+  gp2ir = NULL;
+  free(ir_grid_points);
+  ir_grid_points = NULL;
+  free(weights);
+  weights = NULL;
+
+  Py_RETURN_NONE;
 }
 
 static double get_free_energy_omega(const double temperature,
-				    const double omega)
+                                    const double omega)
 {
   /* temperature is defined by T (K) */
   /* omega must be normalized to eV. */
@@ -437,7 +1377,7 @@ static double get_free_energy_omega(const double temperature,
 }
 
 static double get_entropy_omega(const double temperature,
-				const double omega)
+                                const double omega)
 {
   /* temperature is defined by T (K) */
   /* omega must be normalized to eV. */
@@ -448,7 +1388,7 @@ static double get_entropy_omega(const double temperature,
 }
 
 static double get_heat_capacity_omega(const double temperature,
-				      const double omega)
+                                      const double omega)
 {
   /* temperature is defined by T (K) */
   /* omega must be normalized to eV. */
@@ -467,418 +1407,222 @@ static double get_heat_capacity_omega(const double temperature,
 /*   return omega / (exp(omega / (KB * temperature)) - 1); */
 /* } */
 
-
-static PyObject * py_distribute_fc2(PyObject *self, PyObject *args)
+static int compute_permutation(int * rot_atom,
+                               PHPYCONST double lat[3][3],
+                               PHPYCONST double (*pos)[3],
+                               PHPYCONST double (*rot_pos)[3],
+                               const int num_pos,
+                               const double symprec)
 {
-  PyArrayObject* force_constants;
-  PyArrayObject* lattice;
-  PyArrayObject* positions;
-  PyArrayObject* rotation;
-  PyArrayObject* rotation_cart;
-  PyArrayObject* translation;
-  int atom_disp, map_atom_disp;
-  double symprec;
+  int i,j,k,l;
+  int search_start;
+  double distance2, diff_cart;
+  double diff[3];
 
-  if (!PyArg_ParseTuple(args, "OOOiiOOOd",
-			&force_constants,
-			&lattice,
-			&positions,
-			&atom_disp,
-			&map_atom_disp,
-			&rotation_cart,
-			&rotation,
-			&translation,
-			&symprec)) {
-    return NULL;
+  for (i = 0; i < num_pos; i++) {
+    rot_atom[i] = -1;
   }
 
-  const int* r = (int*)PyArray_DATA(rotation);
-  const double* r_cart = (double*)PyArray_DATA(rotation_cart);
-  double* fc2 = (double*)PyArray_DATA(force_constants);
-  const double* t = (double*)PyArray_DATA(translation);
-  const double* lat = (double*)PyArray_DATA(lattice);
-  const double* pos = (double*)PyArray_DATA(positions);
-  const int num_pos = PyArray_DIMS(positions)[0];
-
-  distribute_fc2(fc2,
-		 lat,
-		 pos,
-		 num_pos,
-		 atom_disp,
-		 map_atom_disp,
-		 r_cart,
-		 r,
-		 t,
-		 symprec);
-
-  Py_RETURN_NONE;
-}
-
-static int distribute_fc2(double * fc2,
-			  const double * lat,
-			  const double * pos,
-			  const int num_pos,
-			  const int atom_disp,
-			  const int map_atom_disp,
-			  const double * r_cart,
-			  const int * r,
-			  const double * t,
-			  const double symprec)
-{
-  int i, j, k, l, m, address_new, address;
-  int is_found, rot_atom;
-  double distance2, symprec2, diff_cart;
-  double rot_pos[3], diff[3];
-
-  symprec2 = symprec * symprec;
-
-  is_found = 1;
+  /* optimization: Iterate primarily by pos instead of rot_pos. */
+  /*  (find where 0 belongs in rot_atom, then where 1 belongs, etc.) */
+  /*  Then track the first unassigned index. */
+  /* */
+  /* This works best if the permutation is close to the identity. */
+  /* (more specifically, if the max value of 'rot_atom[i] - i' is small) */
+  search_start = 0;
   for (i = 0; i < num_pos; i++) {
-    for (j = 0; j < 3; j++) {
-      rot_pos[j] = t[j];
-      for (k = 0; k < 3; k++) {
-	rot_pos[j] += r[j * 3 + k] * pos[i * 3 + k];
-      }
+    while (rot_atom[search_start] >= 0) {
+      search_start++;
     }
+    for (j = search_start; j < num_pos; j++) {
+      if (rot_atom[j] >= 0) {
+        continue;
+      }
 
-    rot_atom = -1;
-    for (j = 0; j < num_pos; j++) {
       for (k = 0; k < 3; k++) {
-	diff[k] = pos[j * 3 + k] - rot_pos[k];
-	diff[k] -= nint(diff[k]);
+        diff[k] = pos[i][k] - rot_pos[j][k];
+        diff[k] -= nint(diff[k]);
       }
       distance2 = 0;
       for (k = 0; k < 3; k++) {
-	diff_cart = 0;
-	for (l = 0; l < 3; l++) {
-	  diff_cart += lat[k * 3 + l] * diff[l];
-	}
-	distance2 += diff_cart * diff_cart;
+        diff_cart = 0;
+        for (l = 0; l < 3; l++) {
+          diff_cart += lat[k][l] * diff[l];
+        }
+        distance2 += diff_cart * diff_cart;
       }
 
-      if (distance2 < symprec2) {
-	  rot_atom = j;
-	  break;
+      if (sqrt(distance2) < symprec) {
+        rot_atom[j] = i;
+        break;
+      }
+    }
+  }
+
+  for (i = 0; i < num_pos; i++) {
+    if (rot_atom[i] < 0) {
+      printf("Encounter some problem in compute_permutation.\n");
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* Implementation detail of get_smallest_vectors. */
+/* Finds the smallest vectors within each list and copies them to the output. */
+static void gsv_copy_smallest_vectors(double (*shortest_vectors)[27][3],
+                                      int * multiplicity,
+                                      PHPYCONST double (*vector_lists)[27][3],
+                                      PHPYCONST double (*length_lists)[27],
+                                      const int num_lists,
+                                      const double symprec)
+{
+  int i,j,k;
+  int count;
+  double minimum;
+  double (*vectors)[3];
+  double * lengths;
+
+  for (i = 0; i < num_lists; i++) {
+    /* Look at a single list of 27 vectors. */
+    lengths = length_lists[i];
+    vectors = vector_lists[i];
+
+    /* Compute the minimum length. */
+    minimum = DBL_MAX;
+    for (j = 0; j < 27; j++) {
+      if (lengths[j] < minimum) {
+        minimum = lengths[j];
       }
     }
 
-    if (rot_atom < 0) {
-      printf("Encounter some problem in distribute_fc2.\n");
-      is_found = 0;
-      goto end;
+    /* Copy vectors whose length is within tolerance. */
+    count = 0;
+    for (j = 0; j < 27; j++) {
+      if (lengths[j] - minimum <= symprec) {
+        for (k = 0; k < 3; k++) {
+          shortest_vectors[i][count][k] = vectors[j][k];
+        }
+        count++;
+      }
     }
 
-    /* R^-1 P R */
-    address = map_atom_disp * num_pos * 9 + rot_atom * 9;
-    address_new = atom_disp * num_pos * 9 + i * 9;
-    for (j = 0; j < 3; j++) {
+    multiplicity[i] = count;
+  }
+}
+
+/* Distributes all force constants using precomputed data about symmetry mappings. */
+static void
+distribute_fc2_with_mappings(double (*fc2)[3][3], /* shape[num_pos][num_pos] */
+                             const int * atom_list,
+                             const int len_atom_list,
+                             PHPYCONST double (*r_carts)[3][3], /* shape[num_rot] */
+                             const int * permutations, /* shape[num_rot][num_pos] */
+                             const int * map_atoms, /* shape [num_pos] */
+                             const int * map_syms, /* shape [num_pos] */
+                             const int num_rot,
+                             const int num_pos)
+{
+  int i, j, k, l, m;
+  int atom_todo, atom_done, atom_other;
+  int sym_index;
+  double (*fc2_done)[3];
+  double (*fc2_todo)[3];
+  double (*r_cart)[3];
+  const int * permutation;
+
+  for (i = 0; i < len_atom_list; i++) {
+    /* look up how this atom maps into the done list. */
+    atom_todo = atom_list[i];
+    atom_done = map_atoms[atom_todo];
+    sym_index = map_syms[atom_todo];
+
+    /* skip the atoms in the done list, */
+    /* which are easily identified because they map to themselves. */
+    if (atom_todo == atom_done) {
+      continue;
+    }
+
+    /* look up information about the rotation */
+    r_cart = r_carts[sym_index];
+    permutation = &permutations[sym_index * num_pos]; /* shape[num_pos] */
+
+    /* distribute terms from atom_done to atom_todo */
+    for (atom_other = 0; atom_other < num_pos; atom_other++) {
+      fc2_done = fc2[atom_done * num_pos + permutation[atom_other]];
+      fc2_todo = fc2[atom_todo * num_pos + atom_other];
+      for (j = 0; j < 3; j++) {
+        for (k = 0; k < 3; k++) {
+          for (l = 0; l < 3; l++) {
+            for (m = 0; m < 3; m++) {
+              /* P' = R^-1 P R */
+              fc2_todo[j][k] += r_cart[l][j] * r_cart[m][k] * fc2_done[l][m];
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+static void set_index_permutation_symmetry_fc(double * fc,
+                                              const int natom)
+{
+  int i, j, k, l, m, n;
+
+#pragma omp parallel for private(j, k, l, m, n)
+  for (i = 0; i < natom; i++) {
+    /* non diagonal part */
+    for (j = i + 1; j < natom; j++) {
       for (k = 0; k < 3; k++) {
-	for (l = 0; l < 3; l++) {
-	  for (m = 0; m < 3; m++) {
-	    fc2[address_new + j * 3 + k] +=
-	      r_cart[l * 3 + j] * r_cart[m * 3 + k] *
-	      fc2[address + l * 3 + m];
-	  }
-	}
+        for (l = 0; l < 3; l++) {
+          m = i * natom * 9 + j * 9 + k * 3 + l;
+          n = j * natom * 9 + i * 9 + l * 3 + k;
+          fc[m] += fc[n];
+          fc[m] /= 2;
+          fc[n] = fc[m];
+        }
       }
     }
-  end:
-    ;
-  }
 
-  return is_found;
-}
-
-static PyObject *py_thm_neighboring_grid_points(PyObject *self, PyObject *args)
-{
-  PyArrayObject* relative_grid_points_py;
-  PyArrayObject* relative_grid_address_py;
-  PyArrayObject* mesh_py;
-  PyArrayObject* bz_grid_address_py;
-  PyArrayObject* bz_map_py;
-  int grid_point;
-  if (!PyArg_ParseTuple(args, "OiOOOO",
-			&relative_grid_points_py,
-			&grid_point,
-			&relative_grid_address_py,
-			&mesh_py,
-			&bz_grid_address_py,
-			&bz_map_py)) {
-    return NULL;
-  }
-
-  int* relative_grid_points = (int*)PyArray_DATA(relative_grid_points_py);
-  PHPYCONST int (*relative_grid_address)[3] =
-    (int(*)[3])PyArray_DATA(relative_grid_address_py);
-  const int num_relative_grid_address = PyArray_DIMS(relative_grid_address_py)[0];
-  const int *mesh = (int*)PyArray_DATA(mesh_py);
-  PHPYCONST int (*bz_grid_address)[3] = (int(*)[3])PyArray_DATA(bz_grid_address_py);
-  const int *bz_map = (int*)PyArray_DATA(bz_map_py);
-
-  thm_get_neighboring_grid_points(relative_grid_points,
-				  grid_point,
-				  relative_grid_address,
-				  num_relative_grid_address,
-				  mesh,
-				  bz_grid_address,
-				  bz_map);
-  Py_RETURN_NONE;
-}
-
-static PyObject *
-py_thm_relative_grid_address(PyObject *self, PyObject *args)
-{
-  PyArrayObject* relative_grid_address_py;
-  PyArrayObject* reciprocal_lattice_py;
-
-  if (!PyArg_ParseTuple(args, "OO",
-			&relative_grid_address_py,
-			&reciprocal_lattice_py)) {
-    return NULL;
-  }
-
-  int (*relative_grid_address)[4][3] =
-    (int(*)[4][3])PyArray_DATA(relative_grid_address_py);
-  PHPYCONST double (*reciprocal_lattice)[3] =
-    (double(*)[3])PyArray_DATA(reciprocal_lattice_py);
-
-  thm_get_relative_grid_address(relative_grid_address, reciprocal_lattice);
-
-  Py_RETURN_NONE;
-}
-
-static PyObject *
-py_thm_all_relative_grid_address(PyObject *self, PyObject *args)
-{
-  PyArrayObject* relative_grid_address_py;
-
-  if (!PyArg_ParseTuple(args, "O",
-			&relative_grid_address_py)) {
-    return NULL;
-  }
-
-  int (*relative_grid_address)[24][4][3] =
-    (int(*)[24][4][3])PyArray_DATA(relative_grid_address_py);
-
-  thm_get_all_relative_grid_address(relative_grid_address);
-
-  Py_RETURN_NONE;
-}
-
-static PyObject *
-py_thm_integration_weight(PyObject *self, PyObject *args)
-{
-  double omega;
-  PyArrayObject* tetrahedra_omegas_py;
-  char* function;
-  if (!PyArg_ParseTuple(args, "dOs",
-			&omega,
-			&tetrahedra_omegas_py,
-			&function)) {
-    return NULL;
-  }
-
-  PHPYCONST double (*tetrahedra_omegas)[4] =
-    (double(*)[4])PyArray_DATA(tetrahedra_omegas_py);
-
-  double iw = thm_get_integration_weight(omega,
-					 tetrahedra_omegas,
-					 function[0]);
-
-  return PyFloat_FromDouble(iw);
-}
-
-static PyObject *
-py_thm_integration_weight_at_omegas(PyObject *self, PyObject *args)
-{
-  PyArrayObject* integration_weights_py;
-  PyArrayObject* omegas_py;
-  PyArrayObject* tetrahedra_omegas_py;
-  char* function;
-  if (!PyArg_ParseTuple(args, "OOOs",
-			&integration_weights_py,
-			&omegas_py,
-			&tetrahedra_omegas_py,
-			&function)) {
-    return NULL;
-  }
-
-  const double *omegas = (double*)PyArray_DATA(omegas_py);
-  double *iw = (double*)PyArray_DATA(integration_weights_py);
-  const int num_omegas = (int)PyArray_DIMS(omegas_py)[0];
-  PHPYCONST double (*tetrahedra_omegas)[4] =
-    (double(*)[4])PyArray_DATA(tetrahedra_omegas_py);
-
-  thm_get_integration_weight_at_omegas(iw,
-				       num_omegas,
-				       omegas,
-				       tetrahedra_omegas,
-				       function[0]);
-
-  Py_RETURN_NONE;
-}
-
-static PyObject * py_get_tetrahedra_frequenies(PyObject *self, PyObject *args)
-{
-  PyArrayObject* freq_tetras_py;
-  PyArrayObject* grid_points_py;
-  PyArrayObject* mesh_py;
-  PyArrayObject* grid_address_py;
-  PyArrayObject* gp_ir_index_py;
-  PyArrayObject* relative_grid_address_py;
-  PyArrayObject* frequencies_py;
-
-  if (!PyArg_ParseTuple(args, "OOOOOOO",
-			&freq_tetras_py,
-			&grid_points_py,
-			&mesh_py,
-			&grid_address_py,
-			&gp_ir_index_py,
-			&relative_grid_address_py,
-			&frequencies_py)) {
-    return NULL;
-  }
-
-  double* freq_tetras = (double*)PyArray_DATA(freq_tetras_py);
-  const int* grid_points = (int*)PyArray_DATA(grid_points_py);
-  const int num_gp_in = (int)PyArray_DIMS(grid_points_py)[0];
-  const int* mesh = (int*)PyArray_DATA(mesh_py);
-  PHPYCONST int (*grid_address)[3] = (int(*)[3])PyArray_DATA(grid_address_py);
-  const int* gp_ir_index = (int*)PyArray_DATA(gp_ir_index_py);
-  PHPYCONST int (*relative_grid_address)[3] =
-    (int(*)[3])PyArray_DATA(relative_grid_address_py);
-  const double* frequencies = (double*)PyArray_DATA(frequencies_py);
-  const int num_band = (int)PyArray_DIMS(frequencies_py)[1];
-  const int is_shift[3] = {0, 0, 0};
-
-  int i, j, k, gp;
-  int g_addr[3];
-  int address_double[3];
-
-  for (i = 0; i < num_gp_in;  i++) {
-#pragma omp parallel for private(k, g_addr, gp, address_double)
-    for (j = 0; j < num_band * 96; j++) {
-      for (k = 0; k < 3; k++) {
-	g_addr[k] = grid_address[grid_points[i]][k] +
-	  relative_grid_address[j % 96][k];
-      }
-      kgd_get_grid_address_double_mesh(address_double,
-				       g_addr,
-				       mesh,
-				       is_shift);
-      gp = kgd_get_grid_point_double_mesh(address_double, mesh);
-      freq_tetras[i * num_band * 96 + j] =
-	frequencies[gp_ir_index[gp] * num_band + j / 96];
-    }
-  }
-
-  Py_RETURN_NONE;
-}
-
-static PyObject * py_run_tetrahedron_method(PyObject *self, PyObject *args)
-{
-  PyArrayObject* data_out_py;
-  PyArrayObject* data_in_py;
-  PyArrayObject* mesh_py;
-  PyArrayObject* freq_points_py;
-  PyArrayObject* frequencies_py;
-  PyArrayObject* weights_py;
-  PyArrayObject* grid_address_py;
-  PyArrayObject* grid_mapping_table_py;
-  PyArrayObject* ir_grid_points_py;
-  PyArrayObject* relative_grid_address_py;
-
-  if (!PyArg_ParseTuple(args, "OOOOOOOOOO",
-			&data_out_py,
-			&data_in_py,
-			&mesh_py,
-			&freq_points_py,
-			&frequencies_py,
-			&weights_py,
-			&grid_address_py,
-			&grid_mapping_table_py,
-			&ir_grid_points_py,
-			&relative_grid_address_py)) {
-    return NULL;
-  }
-
-  /* data_out[num_freq_points][num_kind][2] */
-  double (*data_out)[2] = (double(*)[2])PyArray_DATA(data_out_py);
-  /* data_in[num_ir_gp][num_band][num_kind] */
-  const double* data_in = (double*)PyArray_DATA(data_in_py);
-  const int* mesh = (int*)PyArray_DATA(mesh_py);
-  const int num_kind = (int)PyArray_DIMS(data_in_py)[2];
-  const double* freq_points = (double*)PyArray_DATA(freq_points_py);
-  const int num_freq_points = (int)PyArray_DIMS(frequencies_py)[0];
-  const double* frequencies = (double*)PyArray_DATA(frequencies_py);
-  const int num_band = (int)PyArray_DIMS(frequencies_py)[1];
-  const int* weights = (int*)PyArray_DATA(weights_py);
-  PHPYCONST int (*grid_address)[3] = (int(*)[3])PyArray_DATA(grid_address_py);
-  const int num_gp = (int)PyArray_DIMS(grid_address_py)[0];
-  const int* grid_mapping_table = (int*)PyArray_DATA(grid_mapping_table_py);
-  const int* ir_gp = (int*)PyArray_DATA(ir_grid_points_py);
-  const int num_ir_gp = (int)PyArray_DIMS(ir_grid_points_py)[0];
-  PHPYCONST int (*relative_grid_address)[4][3] =
-    (int(*)[4][3])PyArray_DATA(relative_grid_address_py);
-  const int is_shift[3] = {0, 0, 0};
-
-  int i, j, k, l, q, r, gp;
-  int g_addr[3];
-  double iw;
-  double tetrahedra[24][4];
-  int *gp_ir_index;
-  int address_double[3];
-  int data_adrs;
-
-  gp_ir_index = (int*)malloc(sizeof(int) * num_gp);
-
-  j = 0;
-  for (i = 0; i < num_gp; i++) {
-    if (grid_mapping_table[i] == i) {
-      gp_ir_index[i] = j;
-      j++;
-    } else {
-      gp_ir_index[i] = gp_ir_index[grid_mapping_table[i]];
-    }
-  }
-
-  for (i = 0; i < num_freq_points * num_kind; i++) {
-    data_out[i][0] = 0;
-    data_out[i][1] = 0;
-  }
-
-#pragma omp parallel for private(j, k, l, q, r, g_addr, gp, tetrahedra, iw, address_double)
-  for (i = 0; i < num_freq_points; i++) {
-    for (j = 0; j < num_ir_gp;  j++) {
-      for (k = 0; k < num_band; k++) {
-	for (l = 0; l < 24; l++) {
-	  for (q = 0; q < 4; q++) {
-	    for (r = 0; r < 3; r++) {
-	      g_addr[r] = grid_address[ir_gp[j]][r] +
-		relative_grid_address[l][q][r];
-	    }
-	    kgd_get_grid_address_double_mesh(address_double,
-					     g_addr,
-					     mesh,
-					     is_shift);
-	    gp = kgd_get_grid_point_double_mesh(address_double, mesh);
-	    tetrahedra[l][q] = frequencies[gp_ir_index[gp] * num_band + k];
-	  }
-	}
-	data_adrs = j * num_band * num_kind + k * num_kind;
-	for (l = 0; l < num_kind; i++) {
-	  iw = thm_get_integration_weight(freq_points[i], tetrahedra, 'J');
-	  data_out[i][0] += iw * weights[j] * data_in[data_adrs + l] / num_gp;
-	  iw = thm_get_integration_weight(freq_points[i], tetrahedra, 'I');
-	  data_out[i][1] += iw * weights[j] * data_in[data_adrs + l] / num_gp;
-	}
+    /* diagnoal part */
+    for (k = 0; k < 2; k++) {
+      for (l = k + 1; l < 3; l++) {
+        m = i * natom * 9 + i * 9 + k * 3 + l;
+        n = i * natom * 9 + i * 9 + l * 3 + k;
+        fc[m] += fc[n];
+        fc[m] /= 2;
+        fc[n] = fc[m];
       }
     }
   }
+}
 
-  free(gp_ir_index);
+static void set_translational_symmetry_fc(double * fc,
+                                          const int natom)
+{
+  int i, j, k, l, m;
+  double sums[3][3];
 
-  Py_RETURN_NONE;
+  for (i = 0; i < natom; i++) {
+    for (k = 0; k < 3; k++) {
+      for (l = 0; l < 3; l++) {
+        sums[k][l] = 0;
+        m = i * natom * 9 + k * 3 + l;
+        for (j = 0; j < natom; j++) {
+          if (i != j) {
+            sums[k][l] += fc[m];
+          }
+          m += 9;
+        }
+      }
+    }
+    for (k = 0; k < 3; k++) {
+      for (l = 0; l < 3; l++) {
+        fc[i * natom * 9 + i * 9 + k * 3 + l] = -(sums[k][l] + sums[l][k]) / 2;
+      }
+    }
+  }
 }
 
 static int nint(const double a)

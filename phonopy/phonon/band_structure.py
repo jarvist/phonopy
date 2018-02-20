@@ -53,6 +53,28 @@ def estimate_band_connection(prev_eigvecs, eigvecs, prev_band_order):
 
     return band_order
 
+def get_band_qpoints(band_paths, npoints):
+    """Generate qpoints for band structure path
+
+    Args:
+        band_paths: Sets of end points of paths
+        npoints: Number of q-points in each path including end points
+
+    """
+
+    qpoints_of_paths = []
+    for band_path in band_paths:
+        nd = len(band_path)
+        for i in range(nd - 1):
+            diff = (band_path[i + 1] - band_path[i]) / (npoints - 1)
+            qpoints = [band_path[i].copy()]
+            q = np.zeros(3)
+            for j in range(npoints -1):
+                q += diff
+                qpoints.append(band_path[i] + q)
+            qpoints_of_paths.append(np.array(qpoints))
+
+    return qpoints_of_paths
 
 class BandStructure(object):
     def __init__(self,
@@ -61,8 +83,7 @@ class BandStructure(object):
                  is_eigenvectors=False,
                  is_band_connection=False,
                  group_velocity=None,
-                 factor=VaspToTHz,
-                 verbose=False):
+                 factor=VaspToTHz):
         self._dynamical_matrix = dynamical_matrix
         self._cell = dynamical_matrix.get_primitive()
         self._supercell = dynamical_matrix.get_supercell()
@@ -81,7 +102,7 @@ class BandStructure(object):
         self._eigenvectors = None
         self._frequencies = None
         self._group_velocities = None
-        self._set_band(verbose=verbose)
+        self._set_band()
 
     def get_distances(self):
         return self._distances
@@ -104,24 +125,48 @@ class BandStructure(object):
     def get_unit_conversion_factor(self):
         return self._factor
 
-    def plot(self, pyplot, labels=None):
+    def plot(self, plt, labels=None):
         for distances, frequencies in zip(self._distances,
                                           self._frequencies):
             for freqs in frequencies.T:
                 if self._is_band_connection:
-                    pyplot.plot(distances, freqs, '-')
+                    plt.plot(distances, freqs, '-')
                 else:
-                    pyplot.plot(distances, freqs, 'r-')
+                    plt.plot(distances, freqs, 'r-')
 
-        pyplot.ylabel('Frequency')
-        pyplot.xlabel('Wave vector')
+        plt.ylabel('Frequency')
+        plt.xlabel('Wave vector')
+
         if labels and len(labels) == len(self._special_points):
-            pyplot.xticks(self._special_points, labels)
+            plt.xticks(self._special_points, labels)
         else:
-            pyplot.xticks(self._special_points,
-                          [''] * len(self._special_points))
-        pyplot.xlim(0, self._distance)
-        pyplot.axhline(y=0, linestyle=':', linewidth=0.5, color='b')
+            plt.xticks(self._special_points, [''] * len(self._special_points))
+        plt.xlim(0, self._distance)
+        plt.axhline(y=0, linestyle=':', linewidth=0.5, color='b')
+
+    def write_hdf5(self, labels=None, comment=None, filename="band.hdf5"):
+        import h5py
+        with h5py.File(filename, 'w') as w:
+            w.create_dataset('path', data=self._paths)
+            w.create_dataset('distance', data=self._distances)
+            w.create_dataset('frequency', data=self._frequencies)
+            if self._eigenvectors is not None:
+                w.create_dataset('eigenvector', data=self._eigenvectors)
+            if self._group_velocities is not None:
+                w.create_dataset('group_velocity', data=self._group_velocities)
+            if comment:
+                for key in comment:
+                    if key not in ('path',
+                                   'distance',
+                                   'frequency',
+                                   'eigenvector',
+                                   'group_velocity'):
+                        w.create_dataset(key, data=np.string_(comment[key]))
+            if labels:
+                maxlen = max([len(l) for l in labels])
+                dset = w.create_dataset('label', (len(labels),), dtype='S10')
+                for i, l in enumerate(labels):
+                    dset[i] = np.string_(l)
 
     def write_yaml(self, labels=None, comment=None, filename="band.yaml"):
         with open(filename, 'w') as w:
@@ -235,7 +280,7 @@ class BandStructure(object):
                    np.linalg.inv(self._cell.get_cell()).T))
         self._lastq = qpoint.copy()
 
-    def _set_band(self, verbose=False):
+    def _set_band(self):
         eigvals = []
         eigvecs = []
         group_velocities = []
@@ -248,8 +293,7 @@ class BandStructure(object):
             (distances_on_path,
              eigvals_on_path,
              eigvecs_on_path,
-             gv_on_path) = self._solve_dm_on_path(path,
-                                                  verbose)
+             gv_on_path) = self._solve_dm_on_path(path)
 
             eigvals.append(np.array(eigvals_on_path))
             if self._is_eigenvectors:
@@ -268,7 +312,7 @@ class BandStructure(object):
 
         self._set_frequencies()
 
-    def _solve_dm_on_path(self, path, verbose):
+    def _solve_dm_on_path(self, path):
         is_nac = self._dynamical_matrix.is_nac()
         distances_on_path = []
         eigvals_on_path = []
@@ -288,10 +332,9 @@ class BandStructure(object):
                 if (np.abs(q) < 0.0001).all(): # For Gamma point
                     q_direction = path[0] - path[-1]
                 self._dynamical_matrix.set_dynamical_matrix(
-                    q, q_direction=q_direction, verbose=verbose)
+                    q, q_direction=q_direction)
             else:
-                self._dynamical_matrix.set_dynamical_matrix(
-                    q, verbose=verbose)
+                self._dynamical_matrix.set_dynamical_matrix(q)
             dm = self._dynamical_matrix.get_dynamical_matrix()
 
             if self._is_eigenvectors:

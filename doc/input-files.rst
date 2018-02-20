@@ -41,7 +41,7 @@ Example of rutile-type silicon oxide crystal structure (1)
 ::
 
    Si O
-      1.00000000000000     
+      1.00000000000000
         4.2266540199664249    0.0000000000000000    0.0000000000000000
         0.0000000000000000    4.2266540199664249    0.0000000000000000
         0.0000000000000000    0.0000000000000000    2.6888359272289208
@@ -64,7 +64,7 @@ Example of rutile-type silicon oxide crystal structure (2)
 ::
 
    Stishovite
-      1.00000000000000     
+      1.00000000000000
         4.2266540199664249    0.0000000000000000    0.0000000000000000
         0.0000000000000000    4.2266540199664249    0.0000000000000000
         0.0000000000000000    0.0000000000000000    2.6888359272289208
@@ -111,15 +111,15 @@ Example
 
    48
    2
-   
-   1    
+
+   1
      0.0050650623043761   0.0000000000000000   0.0086223630086415
      -0.0347116200   -0.0000026500   -0.0679795200
       0.0050392400   -0.0015711700   -0.0079514600
       0.0027380900   -0.0017851900   -0.0069206400
    ... (continue until all the forces for this displacement have written)
 
-   25   
+   25
      0.0050650623043761   0.0000000000000000   0.0086223630086415
      -0.0017134500   -0.0001539800    0.0017333400
       0.0013248100    0.0001984300   -0.0001203700
@@ -128,21 +128,38 @@ Example
 
 .. _file_force_constants:
 
-``FORCE_CONSTANTS``
--------------------
+``FORCE_CONSTANTS`` and ``force_constants.hdf5``
+--------------------------------------------------
 
-If the force constants of a supercell are known, it is not
-necessary to prepared ``FORCES``. Phonopy has an interface to read and write
-``FORCE_CONSTANTS``.  To read and write ``FORCE_CONSTANTS`` are
-controlled by :ref:`force_constants_tag`.
+If the force constants of a supercell are known, it is not necessary
+to prepared ``FORCES``. Phonopy has an interface to read and write
+``FORCE_CONSTANTS`` or ``force_constants.hdf5``.  To read and write
+these files are controlled by :ref:`force constants tags
+<force_constants_tag>` and :ref:`fc_format_tag`. VASP users can use
+:ref:`VASP DFPT interface <vasp_force_constants>` to create
+``FORCE_CONSTANTS`` from ``vasprun.xml``. Quantum ESPRESSO users can
+use ``q2r.x`` to create force constants file by followng the
+instraction shown at :ref:`qe_q2r`
 
-VASP users can use :ref:`VASP DFPT interface <vasp_force_constants>`
-to create ``FORCE_CONSTANTS`` from ``vasprun.xml``.
+Force constants are stored in an array whose shape is either
 
-Format
-~~~~~~
+(1) ``(n_satom, n_satom, 3, 3)``
+(2) ``(n_patom, n_satom, 3, 3)``
 
-First line is for the number of atoms in supercell. Below second line,
+where ``n_satom`` and ``n_patom`` are the numbers of atoms in
+supercell and primitive cell, respectively.
+
+Format of ``FORCE_CONSTANTS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First line contains the first two elements of the shape of the force
+constants array, i.e., for ``(n_satom, n_satom, 3, 3)``, the first and
+second numbers are the same and are the number of atoms in the
+supercell, and for ``(n_patom, n_satom, 3, 3)``, they are the numbers
+of atoms in the primitive cell and supercell. If the first line
+contains only one number, it is assumed same as that of the former case.
+
+Below second line,
 force constants between atoms are written by every four lines. In
 first line of the four lines, anything can be written, i.e., just
 ignored. Second to fourth lines of the four lines are for the second
@@ -157,7 +174,7 @@ Example
 
 ::
 
-   32
+   32  32
    1   1
      4.635786969900131    -0.000000000000000    -0.000000000000000
     -0.000000000000000     4.635786969900130    -0.000000000000000
@@ -181,11 +198,36 @@ Example
      0.000000000000000     4.635786969900130     0.000000000000000
      0.000000000000000     0.000000000000000     4.635786969900130
 
-``force_constants.hdf5``
--------------------------
+Format of ``force_constants.hdf5``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is an alternative of ``FORCE_CONSTANTS`` but the data is stored
-in HDF5 format. See the detail of how to obtain this file, :ref:`hdf5_option`.
+in HDF5 format. See the detail of how to obtain this file,
+:ref:`fc_format_tag`.
+
+The data are stored as follows. ``p2s_map`` is introduced at version
+1.12.6. Force constants data can be stored in the array shape of
+either ``(n_satom, n_satom, 3, 3)`` or ``(n_patom, n_satom, 3, 3)``.
+In the later case, ``p2s_map`` is necessary for the consistency check
+and this gives the indices of atoms in the primitive cell in supercell
+index system.
+
+::
+
+   In [1]: import h5py
+   f
+   In [2]: f = h5py.File("force_constants.hdf5", 'r')
+
+   In [3]: list(f)
+   Out[3]: ['force_constants', 'p2s_map']
+
+   In [4]: f['force_constants'].shape
+   Out[4]: (2, 64, 3, 3)
+
+   In [5]: f['p2s_map'][:]
+   Out[5]: array([ 0, 32], dtype=int32)
+
+.. _qpoints_file:
 
 ``QPOINTS`` (optional)
 -----------------------
@@ -240,9 +282,9 @@ atoms are marked by ``*`` in front of atomic positions::
     | |_) | | | | (_) | | | | (_) || |_) | |_| |
     | .__/|_| |_|\___/|_| |_|\___(_) .__/ \__, |
     |_|                            |_|    |___/
-   
+
                                         1.8.4.2
-   
+
    Settings:
      Supercell:  [2 2 1]
      Primitive axis:
@@ -327,4 +369,3 @@ or using the default NAC unit conversion factor (version 1.10.4 or later),
     3.269  0.000  0.000  0.000  3.269  0.000  0.000  0.000  3.234
     2.981  0.000  0.000  0.000  2.981  0.000  0.000  0.000  2.952
    -1.935  0.000  0.000  0.000 -2.036 -0.261  0.000 -0.261 -1.968
-   

@@ -34,7 +34,6 @@
 
 import sys
 import numpy as np
-from phonopy.harmonic.dynamical_matrix import get_smallest_vectors
 from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.units import AMU, kb_J
 from phonopy.structure.grid_points import get_qpoints
@@ -81,9 +80,8 @@ class VelocityQpoints(object):
         self._velocities = velocities
 
         (self._shortest_vectors,
-         self._multiplicity) = get_smallest_vectors(supercell,
-                                                    primitive,
-                                                    symprec)
+         self._multiplicity) = primitive.get_smallest_vectors()
+
         self._qpoints = None
         self._weights = None
 
@@ -130,7 +128,8 @@ class VelocityQpoints(object):
         v = self._velocities
 
         q_array = np.reshape(q, (-1, 3))
-        v_q = np.zeros((v.shape[0], num_p, len(q_array), 3), dtype='complex128')
+        dtype = "c%d" % (np.dtype('double').itemsize * 2)
+        v_q = np.zeros((v.shape[0], num_p, len(q_array), 3), dtype=dtype)
 
         for p_i, s_i in enumerate(p2s):
             for s_j, s2p_j in enumerate(s2p):

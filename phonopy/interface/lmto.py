@@ -7,23 +7,36 @@
 #     VERSION: 0.6 --- gcgs
 
 from __future__ import print_function
-from phonopy.file_IO import get_drift_forces
-from phonopy.interface.vasp import sort_positions_by_symbols
-#from phonopy.interface.vasp import get_scaled_positions_lines
+from phonopy.interface.vasp import (sort_positions_by_symbols, 
+                                        get_drift_forces,
+                                        check_forces)
 from phonopy.units import Bohr
 from phonopy.structure.atoms import Atoms, symbol_map
 
 import sys
 import numpy as np
 
-def parse_set_of_forces(num_atoms, forces_filenames):
+def parse_set_of_forces(num_atoms, forces_filenames, verbose=True):
+    is_parsed = True
     force_sets = []
-    for filename in forces_filenames:
+    for i, filename in enumerate(forces_filenames):
+        if verbose:
+            sys.stdout.write("%d. " % (i + 1))
         lmto_forces = np.loadtxt(filename, dtype=float, skiprows=1)
-        drift_force = get_drift_forces(lmto_forces)
-        force_sets.append(lmto_forces - drift_force)
-    return force_sets
 
+        if check_forces(lmto_forces, num_atoms, filename, verbose=verbose):
+            drift_force = get_drift_forces(lmto_forces,
+                                               filename=filename,
+                                               verbose=verbose)
+            force_sets.append(lmto_forces - drift_force)
+        else:
+            is_parsed = False
+
+    if is_parsed:
+        return force_sets
+    else:
+        return []
+    
 def read_lmto(filename):
     with open(filename, 'r') as f: lines = f.readlines()
     
@@ -64,7 +77,7 @@ def get_lmto_structure(cell):
                                             cell.get_scaled_positions())
     
     lines = '%% site-data vn=3.0 xpos fast io=62 nbas=%d' % sum(num_atoms)
-    lines += ' alat=1.0 plat=' + ('%10.7f ' * 9 + '\n') % tuple(lattice.ravel())
+    lines += ' alat=1.0 plat=' + ('%.6f ' * 9 + '\n') % tuple(lattice.ravel())
     lines += '#                        pos                                   '
     lines += 'vel                                    eula                   ' 
     lines += 'vshft  PL rlx\n'

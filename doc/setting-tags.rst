@@ -70,8 +70,8 @@ vectors, i.e., :math:`( \mathbf{a}_\mathrm{u} \; \mathbf{b}_\mathrm{u}
 
 .. _primitive_axis_tag:
 
-``PRIMITIVE_AXIS``
-~~~~~~~~~~~~~~~~~~
+``PRIMITIVE_AXIS`` or ``PRIMITIVE_AXES``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ::
 
    PRIMITIVE_AXIS = 0.0 0.5 0.5  0.5 0.0 0.5  0.5 0.5 0.0
@@ -198,11 +198,11 @@ it doesn't work for derived values like thermal properties and
 mean square displacements.
 
 The default values for calculators are those to convert frequency
-units to THz. The default conversion factors for ``wien2k``,
-``abinit``, ``pwscf``, and ``elk`` are 3.44595, 21.49068, 108.9708,
-and 154.1079 respectively. These are determined following the physical
-unit systems of the calculators. How to calcualte these conversion
-factors is explained at :ref:`physical_unit_conversion`.
+units to THz. The default conversion factors are shown at
+:ref:`frequency_default_value_interfaces`. These are determined
+following the physical unit systems of the calculators. How to
+calcualte these conversion factors is explained at
+:ref:`physical_unit_conversion`.
 
 Displacement creation tags
 --------------------------
@@ -286,13 +286,15 @@ each path are as follows:
 ~~~~~~~~~~~~~~~~~~
 
 Labels specified are depicted in band structure plot at the points of
-band segments. The number of labels has to correspond to the
-number of band paths specified by ``BAND`` plus one.
+band segments. The number of labels has to correspond to the number of
+band paths specified by ``BAND`` plus one. When LaTeX math style
+expression such as :math:`\Gamma` (``\Gamma``) is expected, it is
+probably necessary to place it between two $ characters.
 
 ::
 
    BAND = 1/2 0 1/2   0 0 0   1/2 1/2 1/2
-   BAND_LABELS = X \Gamma L
+   BAND_LABELS = X $\Gamma$ L
 
 .. |bandlabels| image:: band-labels.png
                 :scale: 50
@@ -336,8 +338,8 @@ properties and density of states.
 
 .. _mp_tag:
 
-``MESH`` or ``MP``
-~~~~~~~~~~~~~~~~~~~
+``MESH``, ``MP``, or ``MESH_NUMBERS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``MESH`` numbers give uniform meshes in each axis. As the default
 behavior, the center of mesh is determined by the Monkhorst-Pack
@@ -470,7 +472,7 @@ written as
 
 .. math::
 
-   g^j(\omega, \hat{\mathbf{n}}) = \frac{1}{N} \sum_\lambda 
+   g^j(\omega, \hat{\mathbf{n}}) = \frac{1}{N} \sum_\lambda
    \delta(\omega - \omega_\lambda) |\hat{\mathbf{n}} \cdot
    \mathbf{e}^j_\lambda|^2,
 
@@ -590,7 +592,7 @@ The moments for DOS are given as
 .. math::
 
    M_n(\omega_\text{min}, \omega_\text{max})
-   &=\frac{\int_{\omega_\text{min}}^{\omega_\text{max}} \omega^n
+   =\frac{\int_{\omega_\text{min}}^{\omega_\text{max}} \omega^n
    g(\omega) d\omega} {\int_{\omega_\text{min}}^{\omega_\text{max}}
    g(\omega) d\omega}.
 
@@ -599,7 +601,7 @@ The moments for PDOS are given as
 .. math::
 
    M_n^j(\omega_\text{min}, \omega_\text{max})
-   &=\frac{\int_{\omega_\text{min}}^{\omega_\text{max}} \omega^n
+   =\frac{\int_{\omega_\text{min}}^{\omega_\text{max}} \omega^n
    g^j(\omega) d\omega} {\int_{\omega_\text{min}}^{\omega_\text{max}}
    g^j(\omega) d\omega}.
 
@@ -635,10 +637,9 @@ computationally demanding, so the convergence is easily achieved with
 increasing the density of the sampling mesh. ``-p`` option can be used
 together to plot the thermal propreties.
 
-Phonon frequencies have to be calculated in THz and this is the
-default setting of phonopy. However as a special case when
-unit conversion factor is specified using
-``FREQUENCY_CONVERSION_FACTOR`` tag, careful attention is required.
+Phonon frequencies in THz, which is the default setting of phonopy,
+are used to obtain the thermal properties, therefore physical units
+have to be set properly for it (see :ref:`calculator_interfaces`.)
 
 The calculated values are
 written into ``thermal_properties.yaml``. The unit systems of free
@@ -658,6 +659,26 @@ temperature range to be calculated. The default values of them are 0,
    TPROP = .TRUE.
    TMAX = 2000
 
+.. _pretend_real_tags:
+
+``PRETEND_REAL``
+~~~~~~~~~~~~~~~~~
+
+This enables to take imaginary frequencies as real for thermal
+property calculation. This does give false thermal properties,
+therefore for a testing purpose only, when a small amount of imaginary
+branches obtained.
+
+::
+
+   TPROP = .TRUE.
+   PRETEND_REAL = .TRUE.
+
+``CUTOFF_FREQUENCY``
+~~~~~~~~~~~~~~~~~~~~~
+
+Frequencies lower than this cutoff frequency are not used to calculate
+thermal properties.
 
 .. _thermal_atomic_displacements_tags:
 
@@ -672,22 +693,25 @@ Thermal displacements
 Mean square displacements projected to Cartesian axes as a function of
 temperature are calculated from the number of phonon excitations. The
 usages of ``TMAX``, ``TMIN``, ``TSTEP`` tags are same as those in
-:ref:`thermal properties tags <thermal_properties_tag>`. The result is
-writen into ``thermal_displacements.yaml``. See the detail of the
-method, :ref:`thermal_displacement`. These tags must be used with
+:ref:`thermal properties tags <thermal_properties_tag>`. Phonon
+frequencies in THz, which is the default setting of phonopy, are used to
+obtain the mean square displacements, therefore physical units have to
+be set properly for it (see :ref:`calculator_interfaces`.) The result
+is given in :math:`\textrm{\AA}^2` and writen into
+``thermal_displacements.yaml``. See the detail of the method,
+:ref:`thermal_displacement`. These tags must be used with
 :ref:`mesh_sampling_tags`
 
-``CUTOFF_FREQUENCY`` tag with a small value is recommened to be set
-when sampling :math:`\Gamma` point or using very dense sampling mesh
-to avoid divergence.
+Optionally, ``FMIN`` tag (``--fmin`` option) with a small value is
+recommened to be set when q-points at :math:`\Gamma` point or near
+:math:`\Gamma` point (e.g. using very dense sampling mesh) are sampled
+to avoid divergence. ``FMAX`` tag (``--fmax`` option) can be used to
+specify an upper bound of phonon frequencies where the phonons are
+considered in the summation. The projection is applied along arbitrary
+direction using ``PROJECTION_DIRECTION`` tag
+(:ref:`projection_direction_tag`).
 
-Phonon frequencies have to be calculated in THz and this is the
-default setting of phonopy. However as a special case when unit
-conversion factor is specified using ``FREQUENCY_CONVERSION_FACTOR``
-tag, careful attention is required.
-
-The projection is applied along arbitrary direction using
-``PROJECTION_DIRECTION`` tag (:ref:`projection_direction_tag`).
+``mesh.yaml`` or ``mesh.hdf5`` is not written out from phonopy-1.11.14.
 
 ::
 
@@ -699,27 +723,31 @@ The projection is applied along arbitrary direction using
 ``TDISPMAT``, ``TMAX``, ``TMIN``, and ``TSTEP``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Mean square displacement matricies are calculated. The difinition is
-shown at :ref:`thermal_displacement`. The result is writen into
+Mean square displacement matricies are calculated. The definition is
+shown at :ref:`thermal_displacement`. Phonon frequencies in THz, which
+is the default setting of phonopy, are
+used to obtain the mean square displacement matricies, therefore
+physical units have to be set properly for it (see
+:ref:`calculator_interfaces`.) The result is given in
+:math:`\textrm{\AA}^2` and writen into
 ``thermal_displacement_matrices.yaml`` where six matrix elements are
 given in the order of xx, yy, zz, yz, xz, xy.  In this yaml file,
 ``displacement_matrices`` and ``displacement_matrices_cif`` correspond
-to
-:math:`\mathrm{U}_\text{cart}` and :math:`\mathrm{U}_\text{cif}`
+to :math:`\mathrm{U}_\text{cart}` and :math:`\mathrm{U}_\text{cif}`
 defined at :ref:`thermal_displacement_matrix`, respectively.
 
-``CUTOFF_FREQUENCY`` tag with a small value is recommened to be set
-when sampling :math:`\Gamma` point or using very dense sampling mesh
-to avoid divergence.
+Optionally, ``FMIN`` tag (``--fmin`` option) with a small value is
+recommened to be set when q-points at :math:`\Gamma` point or near
+:math:`\Gamma` point (e.g. using very dense sampling mesh) are sampled
+to avoid divergence. ``FMAX`` tag (``--fmax`` option) can be used to
+specify an upper bound of phonon frequencies where the phonons are
+considered in the summation.
 
 The 3x3 matrix restricts distribution of each atom around the
 equilibrium position to be ellipsoid. But the distribution is not
 necessarily to be so.
 
-Phonon frequencies have to be calculated in THz and this is the
-default setting of phonopy. However as a special case when
-unit conversion factor is specified using
-``FREQUENCY_CONVERSION_FACTOR`` tag, careful attention is required.
+``mesh.yaml`` or ``mesh.hdf5`` is not written out from phonopy-1.11.14.
 
 ::
 
@@ -730,19 +758,20 @@ unit conversion factor is specified using
 ``TDISPMAT_CIF``
 ~~~~~~~~~~~~~~~~~
 
-This tag specifis a temperature at which thermal displacement is
+This tag specifis a temperature (K) at which thermal displacement is
 calculated and the mean square displacement matrix is written to the
-cif file ``tdispmat.cif`` with the dictionary item ``aniso_U``.
+cif file ``tdispmat.cif`` with the dictionary item ``aniso_U``. Phonon
+frequencies in THz, which is the default setting of phonopy, are used
+to obtain the mean square displacement matricies, therefore physical
+units have to be set properly for it (see
+:ref:`calculator_interfaces`.) The result is given in
+:math:`\textrm{\AA}^2`.
+
+``mesh.yaml`` or ``mesh.hdf5`` is not written out from phonopy-1.11.14.
 
 ::
 
    TDISPMAT_CIF = 1273.0
-
-``CUTOFF_FREQUENCY``
-~~~~~~~~~~~~~~~~~~~~~
-
-Frequencies lower than this cutoff frequency are not used to calculate
-thermal displacements.
 
 Specific q-points
 -----------------
@@ -752,8 +781,22 @@ Specific q-points
 ``QPOINTS``
 ~~~~~~~~~~~
 
-When ``QPOINTS = .TRUE.``, ``QPOINTS`` file in your working directory
-is read, and the q-points written in this file are calculated.
+When q-points are supplied, those phonons are calculated. Q-points are
+specified successive values separated by spaces and collected by every
+three values as vectors in reciprocal reduced coordinates.
+
+::
+
+   QPOINTS = 0 0 0  1/2 1/2 1/2  1/2 0 1/2
+
+With ``QPOINTS = .TRUE.``, q-points are read from ``QPOITNS`` file
+(see the file format at :ref:`QPOINTS<qpoints_file>`) in curret directory
+phonons at the q-points are calculated.
+
+::
+
+   QPOINTS = .TRUE.
+
 
 .. _writedm_tag:
 
@@ -915,14 +958,18 @@ Symmetry search on the reciprocal sampling mesh is disabled by setting
 ``FC_SYMMETRY``
 ~~~~~~~~~~~~~~~~
 
-This tag is used to symmetrize force constants partly. The number of
-iteration of the following set of symmetrization applied to force
-constants is specified. The default value is 0. In the case of VASP,
-this tag is usually unnecessary to be specified.
+**Changed at v1.12.3**
+
+Previously this tag required a number for the iteration. From version
+1.12.3, the way of symmetrization for translation invariance is
+modified and this number became unnecessary.
+
+This tag is used to symmetrize force constants by translational
+symmetry and permutation symmetry with ``.TRUE.`` or ``.FALSE.``.
 
 ::
 
-   FC_SYMMETRY = 1
+   FC_SYMMETRY = .TRUE.
 
 
 From the translation invariance condition,
@@ -933,19 +980,20 @@ From the translation invariance condition,
 
 where *i* and *j* are the atom indices, and :math:`\alpha` and
 :math:`\beta` are the Catesian indices for atoms *i* and *j*,
-respectively. Force constants are symmetric in each pair as
+respectively. When this condition is broken, the sum gives non-zero
+value. This value is subtracted from the diagonal blocks. Force
+constants are symmetric in each pair as
 
 .. math::
 
    \Phi_{ij}^{\alpha\beta}
         = \frac{\partial^2 U}{\partial u_i^\alpha \partial u_j^\beta}
         = \frac{\partial^2 U}{\partial u_j^\beta \partial u_i^\alpha}
-	= \Phi_{ji}^{\beta\alpha}
+        = \Phi_{ji}^{\beta\alpha}
 
-These symmetrizations break the symmetry conditions each other. Be
-careful that the other symmetries of force constants, i.e., the
+Mind that the other symmetries of force constants, i.e., the
 symmetry from crystal symmetry or rotational symmetry, are broken to
-force applying ``FC_SYMMETRY``.
+use ``FC_SYMMETRY``.
 
 .. Tolerance of the crystal symmetry search is given by phonopy option of
 .. ``--tolerance``.
@@ -968,7 +1016,7 @@ force applying ``FC_SYMMETRY``.
 ..    \Phi_{ij}^{\alpha\beta}
 ..         = \frac{\partial^2 U}{\partial u_i^\alpha \partial u_j^\beta}
 ..         = \frac{\partial^2 U}{\partial u_j^\beta \partial u_i^\alpha}
-.. 	= \Phi_{ji}^{\beta\alpha}
+..      = \Phi_{ji}^{\beta\alpha}
 
 .. is imposed with ``PERMUTATION = .TRUE.``. The default value is
 .. ``.FALSE.``. This is not necessary to be set, because dynamical
@@ -1005,7 +1053,17 @@ READ``, force constants are read from ``FORCE_CONSTANTS`` file. With
 The file format of ``FORCE_CONSTANTS`` is shown
 :ref:`here <file_force_constants>`.
 
+``READ_FORCE_CONSTANTS``
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
+``READ_FORCE_CONSTANTS = .TRUE.`` is equivalent to ``FORCE_CONSTANTS =
+READ``.
+
+``WRITE_FORCE_CONSTANTS``
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``WRITE_FORCE_CONSTANTS = .TRUE.`` is equivalent to ``FORCE_CONSTANTS =
+WRITE``.
 
 .. _animation_tag:
 
@@ -1203,3 +1261,106 @@ little group.
 
    IRREPS = 0 0 1/8
    LITTLE_COGROUP = .TRUE.
+
+Input/Output file control
+-------------------------
+
+.. _fc_format_tag:
+
+``FC_FORMAT``,  ``READFC_FORMAT``, ``WRITEFC_FORMAT``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are two file-formats to store force constants. Currently
+:ref:`text style<file_force_constants>` (``TEXT``) and hdf5 (``HDF5``)
+formats are supported. The default file format is the :ref:`text
+style<file_force_constants>`. Reading and writing force constants are
+invoked by :ref:`FORCE_CONSTANTS tag<force_constants_tag>`. Using
+these tags, the input/output formats are switched.
+
+``FC_FORMAT`` affects to both input and output, e.g.::
+
+   FORCE_CONSTANTS = WRITE
+   FC_FORMAT = HDF5
+
+``READFC_FORMAT`` and ``WRITEFC_FORMAT`` can be used to control
+input and output formats separately, i.e., the following setting to
+convert force constants format is possible::
+
+   READ_FORCE_CONSTANTS = .TRUE.
+   WRITE_FORCE_CONSTANTS = .TRUE.
+   WRITEFC_FORMAT = HDF5
+
+.. _band_format_tag:
+
+``BAND_FORMAT``, ``MESH_FORMAT``, ``QPOINTS_FORMAT``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are two file-formats to write the results of band structure,
+mesh, and q-points calculations. Currently YAML (``YAML``) and hdf5
+(``HDF5``) formats are supported. The default file format is the YAML
+format. The file format is changed as follows:
+
+::
+
+   BAND_FORMAT = HDF5
+
+::
+
+   MESH_FORMAT = HDF5
+
+::
+
+   QPOINTS_FORMAT = HDF5
+
+.. _hdf5_tag:
+
+``HDF5``
+~~~~~~~~~~~
+
+**This tag is deprecated.**
+
+The following output files are written in hdf5 format instead of their
+original formats (in parenthesis) by ``HDF5 = .TRUE.``.  In addition,
+``force_constants.hdf5`` is read with this tag.
+
+* ``force_constants.hdf5`` (``FORCE_CONSTANTS``)
+* ``mesh.hdf5`` (``mesh.yaml``)
+* ``band.hdf5`` (``band.yaml``)
+* ``qpoints.hdf5`` (``qpoints.yaml``)
+
+::
+
+   HDF5 = .TRUE.
+
+``force_constants.hdf5``
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``--hdf5`` option and ``FORCE_CONSTANTS = WRITE``
+(``--writefc``), ``force_constants.hdf5`` is written.
+With ``--hdf5`` option and ``FORCE_CONSTANTS = READ`` (``--readfc``),
+``force_constants.hdf5`` is read.
+
+``mesh.hdf5``
+^^^^^^^^^^^^^^
+
+In the mesh sampling calculations (see :ref:`mesh_sampling_tags`),
+calculation results are written into ``mesh.hdf5`` but not into
+``mesh.yaml``. Using this option may reduce the data output size and
+thus writing time when ``mesh.yaml`` is huge, e.g., eigenvectors are
+written on a dense sampling mesh.
+
+``qpoints.hdf5``
+^^^^^^^^^^^^^^^^^
+
+In the specific q-points calculations (:ref:`qpoints_tag`),
+calculation results are written into ``qpoints.hdf5`` but not into
+``qpoints.yaml``. With :ref:`writedm_tag`, dynamical matrices are also
+stored in ``qpoints.hdf5``. Using this option may be useful with large
+set of q-points with including eigenvector or dynamical matrix output.
+
+``band.hdf5``
+^^^^^^^^^^^^^^^
+
+In the band structure calculations (:ref:`band_structure_related_tags`),
+calculation results are written into ``band.hdf5`` but not into
+``band.yaml``.

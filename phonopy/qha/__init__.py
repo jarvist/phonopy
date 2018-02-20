@@ -91,7 +91,8 @@ class QHA(object):
                  entropy,   # J/K/mol
                  fe_phonon, # kJ/mol
                  eos='vinet',
-                 t_max=None):
+                 t_max=None,
+                 energy_plot_factor=None):
         self._volumes = np.array(volumes)
         self._electronic_energies = np.array(electronic_energies)
 
@@ -102,6 +103,7 @@ class QHA(object):
 
         self._eos = get_eos(eos)
         self._t_max = t_max
+        self._energy_plot_factor = energy_plot_factor
 
         self._temperatures = []
         self._equiv_volumes = []
@@ -158,13 +160,26 @@ class QHA(object):
 
     def plot(self, thin_number=10, volume_temp_exp=None):
         import matplotlib.pyplot as plt
-        plt.subplot(1, 3, 1)
+        plt.figure(figsize=(7, 3.5))
+        ax = plt.subplot(1, 3, 1)
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
         self._plot_helmholtz_volume(plt, thin_number=thin_number)
-        plt.subplot(1, 3, 2)
+        ax = plt.subplot(1, 3, 2)
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
         self._plot_volume_temperature(plt, exp_data=volume_temp_exp)
-        plt.subplot(1, 3, 3)
+        ax = plt.subplot(1, 3, 3)
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
         self._plot_thermal_expansion(plt)
-        plt.subplots_adjust(wspace=0.35)
+        plt.tight_layout()
         return plt
 
     def get_eos(self):
@@ -195,6 +210,8 @@ class QHA(object):
                                   thin_number=10,
                                   filename='helmholtz-volume.pdf'):
         import matplotlib.pyplot as plt
+        from matplotlib.font_manager import FontProperties
+
         plt.rcParams['backend'] = 'PDF'
         plt.rcParams['pdf.fonttype'] = 42
         plt.rcParams['font.family'] = 'serif'
@@ -202,6 +219,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.left'] = 0.25
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 4, 6
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
 
         self._plot_helmholtz_volume(plt, thin_number=thin_number)
         plt.savefig(filename)
@@ -241,6 +264,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
 
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._plot_volume_temperature(plt, exp_data=exp_data)
         plt.savefig(filename)
         plt.close()
@@ -272,6 +301,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.left'] = 0.15
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
 
         self._plot_thermal_expansion(plt)
         plt.savefig(filename)
@@ -316,6 +351,12 @@ class QHA(object):
             plt.rcParams['figure.subplot.bottom'] = 0.15
             plt.rcParams['figure.figsize'] = 8, 6
 
+            fig, ax = plt.subplots()
+            ax.xaxis.set_ticks_position('both')
+            ax.yaxis.set_ticks_position('both')
+            ax.xaxis.set_tick_params(which='both', direction='in')
+            ax.yaxis.set_tick_params(which='both', direction='in')
+
             self._plot_volume_expansion(plt,
                                         exp_data=exp_data,
                                         symbol=symbol)
@@ -354,6 +395,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.left'] = 0.15
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
 
         self._plot_gibbs_temperature(plt)
         plt.savefig(filename)
@@ -396,6 +443,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
 
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._plot_bulk_modulus_temperature(plt)
         plt.savefig(filename)
         plt.close()
@@ -431,6 +484,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
 
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._plot_heat_capacity_P_numerical(plt, exp_data=exp_data)
         plt.savefig(filename)
         plt.close()
@@ -464,6 +523,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.left'] = 0.15
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
 
         self._plot_heat_capacity_P_polyfit(plt,
                                            exp_data=exp_data)
@@ -528,6 +593,12 @@ class QHA(object):
         plt.rcParams['figure.subplot.bottom'] = 0.15
         plt.rcParams['figure.figsize'] = 8, 6
 
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._plot_gruneisen_temperature(plt)
         plt.savefig(filename)
         plt.close()
@@ -543,7 +614,14 @@ class QHA(object):
                                plt,
                                thin_number=10,
                                xlabel=r'Volume $(\AA^3)$',
-                               ylabel='Free energy (eV)'):
+                               ylabel='Free energy'):
+        if self._energy_plot_factor is None:
+            _energy_plot_factor = 1
+            _ylabel = ylabel + ' (eV)'
+        else:
+            _energy_plot_factor = self._energy_plot_factor
+            _ylabel = ylabel
+
         volume_points = np.linspace(min(self._volumes),
                                     max(self._volumes),
                                     201)
@@ -555,25 +633,42 @@ class QHA(object):
             if i % thin_number == 0:
                 selected_volumes.append(self._equiv_volumes[i])
                 selected_energies.append(self._equiv_energies[i])
+
+        for i, t in enumerate(self._temperatures[:self._max_t_index]):
+            if t >= 298:
+                if i > 0:
+                    de = self._equiv_energies[i] - self._equiv_energies[i - 1]
+                    dt = t - self._temperatures[i - 1]
+                    e0 = ((298 - self._temperatures[i - 1]) / dt * de +
+                          self._equiv_energies[i - 1])
+                else:
+                    e0 = 0
+                break
+        e0 *= _energy_plot_factor
+
+        for i, t in enumerate(self._temperatures[:self._max_t_index]):
+            if i % thin_number == 0:
                 plt.plot(self._volumes,
-                         self._free_energies[i],
+                         np.array(self._free_energies[i]) * _energy_plot_factor
+                         - e0,
                          'bo', markeredgecolor='b', markersize=3)
                 plt.plot(volume_points,
-                         self._eos(volume_points,
-                                   *self._equiv_parameters[i]), 'b-')
+                         self._eos(volume_points, * self._equiv_parameters[i]) *
+                         _energy_plot_factor - e0, 'b-')
                 thin_index = i
 
         for i, j in enumerate((0, thin_index)):
             plt.text(self._volumes[-2],
-                     self._free_energies[j][-1] + (1 - i * 2) * 0.1 - 0.05,
+                     (self._free_energies[j][-1] + (1 - i * 2) * 0.1 - 0.05) *
+                     _energy_plot_factor - e0,
                      "%dK" % int(self._temperatures[j]),
                      fontsize=8)
 
         plt.plot(selected_volumes,
-                 selected_energies,
+                 np.array(selected_energies) * _energy_plot_factor - e0,
                  'ro-', markeredgecolor='r', markersize=3)
         plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
+        plt.ylabel(_ylabel)
 
     def _plot_volume_temperature(self,
                                  plt,
@@ -585,6 +680,8 @@ class QHA(object):
         plt.plot(self._temperatures[:self._max_t_index],
                  self._equiv_volumes[:self._max_t_index],
                  'r-')
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
         # exp
         if exp_data:
             plt.plot(exp_data[0], exp_data[1], 'ro')
@@ -599,6 +696,8 @@ class QHA(object):
         plt.plot(self._temperatures[:self._max_t_index],
                  beta[:self._max_t_index],
                  'r-')
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
 
@@ -632,6 +731,8 @@ class QHA(object):
         plt.plot(self._temperatures[:self._max_t_index],
                  self._equiv_energies[:self._max_t_index],
                  'r-')
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
 
     def _plot_bulk_modulus_temperature(self,
                                        plt,
@@ -642,6 +743,8 @@ class QHA(object):
         plt.plot(self._temperatures[:self._max_t_index],
                  self._equiv_bulk_modulus[:self._max_t_index],
                  'r-')
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
 
     def _plot_heat_capacity_P_numerical(
             self,
@@ -660,6 +763,10 @@ class QHA(object):
         if exp_data:
             plt.plot(exp_data[0], exp_data[1], 'ro')
 
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
+
+
     def _plot_heat_capacity_P_polyfit(
             self,
             plt,
@@ -677,6 +784,9 @@ class QHA(object):
         if exp_data:
             plt.plot(exp_data[0], exp_data[1], 'ro')
 
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
+
     def _plot_gruneisen_temperature(self,
                                     plt,
                                     xlabel='Temperature (K)',
@@ -686,6 +796,8 @@ class QHA(object):
         plt.plot(self._temperatures[:self._max_t_index],
                  self._gruneisen_parameters[:self._max_t_index],
                  'r-')
+        plt.xlim(self._temperatures[0],
+                 self._temperatures[self._max_t_index - 1])
 
     def _set_thermal_expansion(self):
         beta = [0.]

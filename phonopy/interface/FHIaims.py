@@ -109,9 +109,8 @@ def write_aims(filename, atoms):
         if magmoms is not None:
             lines += initial_moment_line % magmoms[n]
 
-    f = open(filename, 'w')
-    f.write(lines)
-    f.close()
+    with open(filename, 'w') as f:
+        f.write(lines)
 
 
 
@@ -132,7 +131,7 @@ def read_aims_output(filename):
     N = 0
     while l < len(lines):
         line = lines[l]
-        if "Number of atoms" in line:
+        if "| Number of atoms" in line:
             N = int(line.split()[5])
         elif "| Unit cell:" in line:
             cell = []
@@ -161,7 +160,7 @@ def read_aims_output(filename):
             forces = []
             for i in range(N):
                 l += 1
-                force = map(float, lines[l].split()[2:5])
+                force = map(float, lines[l].split()[-3:])
                 forces.append(force)
         l += 1
     

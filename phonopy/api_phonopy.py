@@ -40,16 +40,17 @@ from phonopy.structure.symmetry import Symmetry
 from phonopy.structure.cells import get_supercell, get_primitive
 from phonopy.harmonic.displacement import (get_least_displacements,
                                            direction_to_displacement)
-from phonopy.harmonic.force_constants import (get_fc2,
-                                              symmetrize_force_constants,
-                                              rotational_invariance,
-                                              cutoff_force_constants,
-                                              set_tensor_symmetry)
-from phonopy.harmonic.dynamical_matrix import (DynamicalMatrix,
-                                               DynamicalMatrixNAC)
+from phonopy.harmonic.force_constants import (
+    get_fc2,
+    symmetrize_force_constants,
+    symmetrize_compact_force_constants,
+    rotational_invariance,
+    cutoff_force_constants,
+    set_tensor_symmetry)
+from phonopy.harmonic.dynamical_matrix import get_dynamical_matrix
 from phonopy.phonon.band_structure import BandStructure
 from phonopy.phonon.thermal_properties import ThermalProperties
-from phonopy.phonon.mesh import Mesh
+from phonopy.phonon.mesh import Mesh, IterMesh
 from phonopy.units import VaspToTHz
 from phonopy.phonon.dos import TotalDos, PartialDos
 from phonopy.phonon.thermal_displacement import (ThermalDisplacements,
@@ -71,6 +72,7 @@ class Phonopy(object):
                  nac_params=None,
                  distance=None,
                  factor=VaspToTHz,
+                 frequency_scale_factor=None,
                  is_auto_displacements=None,
                  dynamical_matrix_decimals=None,
                  force_constants_decimals=None,
@@ -96,6 +98,7 @@ class Phonopy(object):
 
         self._symprec = symprec
         self._factor = factor
+        self._frequency_scale_factor = frequency_scale_factor
         self._is_symmetry = is_symmetry
         self._use_lapack_solver = use_lapack_solver
         self._log_level = log_level
@@ -135,6 +138,9 @@ class Phonopy(object):
 
         # set_mesh
         self._mesh = None
+
+        # set_iter_mesh
+        self._iter_mesh = None
 
         # set_tetrahedron_method
         self._tetrahedron_method = None
@@ -254,7 +260,8 @@ class Phonopy(object):
 
     def set_nac_params(self, nac_params=None):
         self._nac_params = nac_params
-        self._set_dynamical_matrix()
+        if self._force_constants is not None:
+            self._set_dynamical_matrix()
 
     def set_displacement_dataset(self, displacement_dataset):
         """
@@ -369,8 +376,17 @@ class Phonopy(object):
 
         return True
 
-    def symmetrize_force_constants(self, iteration=3):
-        symmetrize_force_constants(self._force_constants, iteration)
+    def symmetrize_force_constants(self):
+        if self._force_constants.shape[0] == self._force_constants.shape[1]:
+            symmetrize_force_constants(self._force_constants)
+        else:
+            s2p_map = self._primitive.get_supercell_to_primitive_map()
+            p2s_map = self._primitive.get_primitive_to_supercell_map()
+            symmetrize_compact_force_constants(self._force_constants,
+                                               self._supercell,
+                                               self._symmetry,
+                                               s2p_map,
+                                               p2s_map)
         self._set_dynamical_matrix()
 
     def symmetrize_force_constants_by_space_group(self):
@@ -476,8 +492,22 @@ class Phonopy(object):
             from matplotlib import rc
             rc('text', usetex=True)
 
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._band_structure.plot(plt, labels=labels)
         return plt
+
+    def write_hdf5_band_structure(self,
+                                  labels=None,
+                                  comment=None,
+                                  filename="band.hdf5"):
+        self._band_structure.write_hdf5(labels=labels,
+                                        comment=comment,
+                                        filename=filename)
 
     def write_yaml_band_structure(self,
                                   labels=None,
@@ -488,13 +518,18 @@ class Phonopy(object):
                                         filename=filename)
 
     # Sampling mesh
+    def run_mesh(self):
+        if self._mesh is not None:
+            self._mesh.run()
+
     def set_mesh(self,
                  mesh,
                  shift=None,
                  is_time_reversal=True,
                  is_mesh_symmetry=True,
                  is_eigenvectors=False,
-                 is_gamma_center=False):
+                 is_gamma_center=False,
+                 run_immediately=True):
         if self._dynamical_matrix is None:
             print("Warning: Dynamical matrix has not yet built.")
             self._mesh = None
@@ -512,6 +547,8 @@ class Phonopy(object):
             rotations=self._primitive_symmetry.get_pointgroup_operations(),
             factor=self._factor,
             use_lapack_solver=self._use_lapack_solver)
+        if run_immediately:
+            self._mesh.run()
         return True
 
     def get_mesh(self):
@@ -522,7 +559,7 @@ class Phonopy(object):
                     self._mesh.get_weights(),
                     self._mesh.get_frequencies(),
                     self._mesh.get_eigenvectors())
-    
+
     def get_mesh_grid_info(self):
         if self._mesh is None:
             return None
@@ -537,6 +574,56 @@ class Phonopy(object):
     def write_yaml_mesh(self):
         self._mesh.write_yaml()
 
+    # Sampling mesh:
+    # Solving dynamical matrices at q-points one-by-one as an iterator
+    def set_iter_mesh(self,
+                      mesh,
+                      shift=None,
+                      is_time_reversal=True,
+                      is_mesh_symmetry=True,
+                      is_eigenvectors=False,
+                      is_gamma_center=False):
+        """Create an IterMesh instance
+
+        """
+
+
+        if self._dynamical_matrix is None:
+            print("Warning: Dynamical matrix has not yet built.")
+            self._iter_mesh = None
+            return False
+
+        self._iter_mesh = IterMesh(
+            self._dynamical_matrix,
+            mesh,
+            shift=shift,
+            is_time_reversal=is_time_reversal,
+            is_mesh_symmetry=is_mesh_symmetry,
+            is_eigenvectors=is_eigenvectors,
+            is_gamma_center=is_gamma_center,
+            rotations=self._primitive_symmetry.get_pointgroup_operations(),
+            factor=self._factor)
+        return True
+
+    def get_iter_mesh(self):
+        """Returns IterMesh instance
+
+        This instance object does not store all phonon data. With very
+        dense mesh and eigenvectors needed, IterMesh can save memory
+        space, but expected to be slow.
+
+        This object is used as an iterator. Phonon frequencies and
+        eigenvectos are obtained as below:
+
+            for i, (freqs, eigvecs) in enumerate(iter_mesh):
+                print(i + 1)
+                print(freqs)
+                print(eigvecs)
+
+        """
+
+        return self._iter_mesh
+
     # Plot band structure and DOS (PDOS) together
     def plot_band_structure_and_dos(self, pdos_indices=None, labels=None):
         import matplotlib.pyplot as plt
@@ -545,11 +632,20 @@ class Phonopy(object):
             from matplotlib import rc
             rc('text', usetex=True)
 
+
         plt.figure(figsize=(10, 6))
         gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1])
         ax1 = plt.subplot(gs[0, 0])
+        ax1.xaxis.set_ticks_position('both')
+        ax1.yaxis.set_ticks_position('both')
+        ax1.xaxis.set_tick_params(which='both', direction='in')
+        ax1.yaxis.set_tick_params(which='both', direction='in')
         self._band_structure.plot(plt, labels=labels)
         ax2 = plt.subplot(gs[0, 1], sharey=ax1)
+        ax2.xaxis.set_ticks_position('both')
+        ax2.yaxis.set_ticks_position('both')
+        ax2.xaxis.set_tick_params(which='both', direction='in')
+        ax2.yaxis.set_tick_params(which='both', direction='in')
         plt.subplots_adjust(wspace=0.03)
         plt.setp(ax2.get_yticklabels(), visible=False)
 
@@ -564,6 +660,8 @@ class Phonopy(object):
                             ylabel="",
                             draw_grid=False,
                             flip_xy=True)
+
+        ax2.set_xlim((0, None))
 
         return plt
 
@@ -609,7 +707,17 @@ class Phonopy(object):
 
     def plot_total_DOS(self):
         import matplotlib.pyplot as plt
-        self._total_dos.plot(plt)
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
+        self._total_dos.plot(plt, draw_grid=False)
+
+        ax.set_ylim((0, None))
+
         return plt
 
     def write_total_DOS(self):
@@ -669,9 +777,20 @@ class Phonopy(object):
 
     def plot_partial_DOS(self, pdos_indices=None, legend=None):
         import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._pdos.plot(plt,
                         indices=pdos_indices,
-                        legend=legend)
+                        legend=legend,
+                        draw_grid=False)
+
+        ax.set_ylim((0, None))
+
         return plt
 
     def write_partial_DOS(self):
@@ -685,7 +804,8 @@ class Phonopy(object):
                                temperatures=None,
                                is_projection=False,
                                band_indices=None,
-                               cutoff_frequency=None):
+                               cutoff_frequency=None,
+                               pretend_real=False):
         if self._mesh is None:
             print("Warning: set_mesh has to be done before "
                   "set_thermal_properties")
@@ -696,7 +816,8 @@ class Phonopy(object):
                                    eigenvectors=self._mesh.get_eigenvectors(),
                                    is_projection=is_projection,
                                    band_indices=band_indices,
-                                   cutoff_frequency=cutoff_frequency)
+                                   cutoff_frequency=cutoff_frequency,
+                                   pretend_real=pretend_real)
             if temperatures is None:
                 tp.set_temperature_range(t_step=t_step,
                                          t_max=t_max,
@@ -713,7 +834,18 @@ class Phonopy(object):
 
     def plot_thermal_properties(self):
         import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._thermal_properties.plot(plt)
+
+        temps, _, _, _ = self._thermal_properties.get_thermal_properties()
+        ax.set_xlim((0, temps[-1]))
+
         return plt
 
     def write_yaml_thermal_properties(self, filename='thermal_properties.yaml'):
@@ -726,44 +858,55 @@ class Phonopy(object):
                                   t_min=0,
                                   temperatures=None,
                                   direction=None,
-                                  cutoff_frequency=None):
-        """
-        cutoff_frequency:
-          phonon modes that have frequencies below cutoff_frequency
-          are ignored.
+                                  freq_min=None,
+                                  freq_max=None):
+        """Prepare thermal displacements calculation
 
-        direction:
-          Projection direction in reduced coordinates
+        Args:
+            direction:
+                Projection direction in reduced coordinates.
+            freq_min: Phonons having frequency larger than this are included.
+            freq_max: Phonons having frequency smaller than this are included.
+
         """
         self._thermal_displacements = None
 
-        if self._mesh is None:
-            print("Warning: \'set_mesh\' has to finish correctly "
-                  "before \'set_thermal_displacements\'.")
-            return False
+        if self._mesh is not None:
+            eigvecs = self._mesh.get_eigenvectors()
+            mesh_nums = self._mesh.get_mesh_numbers()
+            if eigvecs is None:
+                print("Warning: Eigenvectors have to be calculated.")
+                return False
+            if np.prod(mesh_nums) != len(eigvecs):
+                print("Warning: Sampling mesh must not be symmetrized.")
+                return False
 
-        eigvecs = self._mesh.get_eigenvectors()
-        frequencies = self._mesh.get_frequencies()
-        mesh_nums = self._mesh.get_mesh_numbers()
+            iter_phonons = self._mesh
+        else:
+            if self._iter_mesh is not None:
+                iter_phonons = self._iter_mesh
+            else:
+                print("Warning: \'set_mesh\' has to finish correctly "
+                      "before \'set_thermal_displacements\'.")
+                return False
 
-        if self._mesh.get_eigenvectors() is None:
-            print("Warning: Eigenvectors have to be calculated.")
-            return False
+        if direction is not None:
+            projection_direction = np.dot(direction, self._primitive.get_cell())
+            td = ThermalDisplacements(iter_phonons,
+                                      self._primitive.get_masses(),
+                                      projection_direction=projection_direction,
+                                      freq_min=freq_min,
+                                      freq_max=freq_max)
+        else:
+            td = ThermalDisplacements(iter_phonons,
+                                      self._primitive.get_masses(),
+                                      freq_min=freq_min,
+                                      freq_max=freq_max)
 
-        if np.prod(mesh_nums) != len(eigvecs):
-            print("Warning: Sampling mesh must not be symmetrized.")
-            return False
-
-        td = ThermalDisplacements(frequencies,
-                                  eigvecs,
-                                  self._primitive.get_masses(),
-                                  cutoff_frequency=cutoff_frequency)
         if temperatures is None:
             td.set_temperature_range(t_min, t_max, t_step)
         else:
             td.set_temperatures(temperatures)
-        if direction is not None:
-            td.project_eigenvectors(direction, self._primitive.get_cell())
         td.run()
 
         self._thermal_displacements = td
@@ -775,7 +918,18 @@ class Phonopy(object):
 
     def plot_thermal_displacements(self, is_legend=False):
         import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_tick_params(which='both', direction='in')
+        ax.yaxis.set_tick_params(which='both', direction='in')
+
         self._thermal_displacements.plot(plt, is_legend=is_legend)
+
+        temps, _ = self._thermal_displacements.get_thermal_displacements()
+        ax.set_xlim((0, temps[-1]))
+
         return plt
 
     def write_yaml_thermal_displacements(self):
@@ -786,40 +940,45 @@ class Phonopy(object):
                                           t_step=10,
                                           t_max=1000,
                                           t_min=0,
-                                          cutoff_frequency=None,
+                                          freq_min=None,
+                                          freq_max=None,
                                           t_cif=None):
-        """
-        cutoff_frequency:
-          phonon modes that have frequencies below cutoff_frequency
-          are ignored.
+        """Prepare thermal displacement matrices
 
-        direction:
-          Projection direction in reduced coordinates
+        Args:
+            direction:
+                Projection direction in reduced coordinates.
+            freq_min: Phonons having frequency larger than this are included.
+            freq_max: Phonons having frequency smaller than this are included.
+
         """
         self._thermal_displacement_matrices = None
 
-        if self._mesh is None:
-            print("Warning: \'set_mesh\' has to finish correctly "
-                  "before \'set_thermal_displacement_matrices\'.")
-            return False
+        if self._mesh is not None:
+            eigvecs = self._mesh.get_eigenvectors()
+            if eigvecs is None:
+                print("Warning: Eigenvectors have to be calculated.")
+                return False
+            if np.prod(self._mesh.get_mesh_numbers()) != len(eigvecs):
+                print("Warning: Sampling mesh must not be symmetrized.")
+                return False
 
-        eigvecs = self._mesh.get_eigenvectors()
-        frequencies = self._mesh.get_frequencies()
-        mesh_nums = self._mesh.get_mesh_numbers()
+            iter_phonons = self._mesh
+        else:
+            if self._iter_mesh is not None:
+                iter_phonons = self._iter_mesh
+            else:
+                print("Warning: \'set_mesh\' has to finish correctly "
+                      "before \'set_thermal_displacement_matrices\'.")
+                return False
 
-        if self._mesh.get_eigenvectors() is None:
-            print("Warning: Eigenvectors have to be calculated.")
-            return False
+        tdm = ThermalDisplacementMatrices(
+            iter_phonons,
+            self._primitive.get_masses(),
+            freq_min=freq_min,
+            freq_max=freq_max,
+            lattice=self._primitive.get_cell().T)
 
-        if np.prod(mesh_nums) != len(eigvecs):
-            print("Warning: Sampling mesh must not be symmetrized.")
-            return False
-
-        tdm = ThermalDisplacementMatrices(frequencies,
-                                          eigvecs,
-                                          self._primitive.get_masses(),
-                                          cutoff_frequency=cutoff_frequency,
-                                          lattice=self._primitive.get_cell().T)
         if t_cif is None:
             tdm.set_temperature_range(t_min, t_max, t_step)
         else:
@@ -1016,7 +1175,7 @@ class Phonopy(object):
         return True
 
     def get_modulated_supercells(self):
-        """Returns cells with modulations as Atoms objects"""
+        """Returns cells with modulations as Atoms instances"""
         return self._modulation.get_modulated_supercells()
 
     def get_modulations_and_supercell(self):
@@ -1025,7 +1184,7 @@ class Phonopy(object):
         (modulations, supercell)
 
         modulations: Atomic modulations of supercell in Cartesian coordinates
-        supercell: Supercell as an Atoms object.
+        supercell: Supercell as an Atoms instance.
 
         """
         return self._modulation.get_modulations_and_supercell()
@@ -1080,7 +1239,8 @@ class Phonopy(object):
             self._dynamical_matrix,
             q_length=q_length,
             symmetry=self._primitive_symmetry,
-            frequency_factor_to_THz=self._factor)
+            frequency_factor_to_THz=self._factor,
+            log_level=self._log_level)
         return True
 
     def get_group_velocity(self):
@@ -1153,21 +1313,32 @@ class Phonopy(object):
             print("Warning: Atomic masses are not correctly set.")
             return False
         else:
-            if self._nac_params is None:
-                self._dynamical_matrix = DynamicalMatrix(
-                    self._supercell,
-                    self._primitive,
-                    self._force_constants,
-                    decimals=self._dynamical_matrix_decimals,
-                    symprec=self._symprec)
-            else:
-                self._dynamical_matrix = DynamicalMatrixNAC(
-                    self._supercell,
-                    self._primitive,
-                    self._force_constants,
-                    nac_params=self._nac_params,
-                    decimals=self._dynamical_matrix_decimals,
-                    symprec=self._symprec)
+            self._dynamical_matrix = get_dynamical_matrix(
+                self._force_constants,
+                self._supercell,
+                self._primitive,
+                self._nac_params,
+                self._frequency_scale_factor,
+                self._dynamical_matrix_decimals,
+                symprec=self._symprec,
+                log_level=self._log_level)
+
+            # if self._nac_params is None:
+            #     self._dynamical_matrix = DynamicalMatrix(
+            #         self._supercell,
+            #         self._primitive,
+            #         self._force_constants,
+            #         decimals=self._dynamical_matrix_decimals,
+            #         symprec=self._symprec)
+            # else:
+            #     self._dynamical_matrix = DynamicalMatrixNAC(
+            #         self._supercell,
+            #         self._primitive,
+            #         self._force_constants,
+            #         nac_params=self._nac_params,
+            #         decimals=self._dynamical_matrix_decimals,
+            #         symprec=self._symprec,
+            #         log_level=self._log_level)
             return True
 
     def _search_symmetry(self):
@@ -1220,11 +1391,11 @@ class Phonopy(object):
             trans_mat = inv_supercell_matrix
         else:
             trans_mat = np.dot(inv_supercell_matrix, self._primitive_matrix)
-        self._primitive = get_primitive(
-            self._supercell, trans_mat, self._symprec)
-        num_satom = self._supercell.get_number_of_atoms()
-        num_patom = self._primitive.get_number_of_atoms()
-        if abs(num_satom * np.linalg.det(trans_mat) - num_patom) < 0.1:
-            return True
-        else:
-            return False
+
+        try:
+            self._primitive = get_primitive(
+                self._supercell, trans_mat, self._symprec)
+        except ValueError as err:
+            print("Creating primitive cell is failed.")
+            print("PRIMITIVE_AXIS may be incorrectly specified.")
+            raise

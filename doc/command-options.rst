@@ -7,6 +7,8 @@ Command options
    :depth: 2
    :local:
 
+From phonopy v1.12.2, the command option names with underscores ``_``
+are replaced by those with dashes ``-``. Those tag names are unchanged.
 
 Some of command-line options are equivalent to respective setting
 tags:
@@ -14,52 +16,61 @@ tags:
 * ``--amplitude`` (``DISPLACEMENT_DISTANCE``)
 * ``--anime`` (``ANIME``)
 * ``--band`` (``BAND``)
-* ``--band_connection``  (``BAND_CONNECTION = .TRUE.``)
-* ``--band_labels`` (``BAND_LABELS``)
-* ``--band_points``  (``BAND_POINTS``)
-* ``--cutoff_freq`` (``CUTOFF_FREQUENCY``)
+* ``--band-connection``  (``BAND_CONNECTION = .TRUE.``)
+* ``--band-format`` (``BAND_FORMAT``)
+* ``--band-labels`` (``BAND_LABELS``)
+* ``--band-points``  (``BAND_POINTS``)
+* ``--cutoff-freq`` (``CUTOFF_FREQUENCY``)
 * ``-c``, ``--cell`` (``CELL_FILENAME``)
 * ``-d``  (``CREATE_DISPLACEMENTS = .TRUE.``
 * ``--dim`` (``DIM``)
 * ``--dos`` (``DOS = .TRUE.``)
 * ``--eigvecs``, ``--eigenvectors`` (``EIGENVECTORS = .TRUE.``)
 * ``--factor`` (``FREQUENCY_CONVERSION_FACTOR``)
-* ``--fits_debye_model`` (``DEBYE_MODEL = .TRUE.``)
+* ``--fc-symmetry`` (``FC_SYMMETRY = .TRUE.``)
+* ``--fits-debye-model`` (``DEBYE_MODEL = .TRUE.``)
 * ``--fmax`` (``FMAX``)
 * ``--fmin`` (``FMIN``)
 * ``--fpitch`` (``FPITCH``)
 * ``--gc``, ``--gamma_center`` (``GAMMA_CENTER``)
 * ``--gv``, ``--group_velocity`` (``GROUP_VELOCITY = .TRUE.``)
-* ``--gv_delta_q`` (``GV_DELTA_Q``)
+* ``--gv-delta-q`` (``GV_DELTA_Q``)
 * ``--hdf5`` (``HDF5 = .TRUE.``)
 * ``--irreps`` (``IRREPS``)
 * ``--lcg``, ``--little_cogroup`` (``LITTLE_COGROUP``)
 * ``--modulation`` (``MODULATION``)
 * ``--moment`` (``MOMENT = .TRUE.``)
 * ``--moment_order`` (``MOMENT_ORDER``)
+* ``--mesh-format`` (``MESH_FORMAT``)
 * ``--mp``, ``--mesh`` (``MP`` or ``MESH``)
 * ``--nac`` (``NAC = .TRUE.``)
 * ``--nosym`` (``SYMMETRY = .FALSE.``)
 * ``--nomeshsym`` (``MESH_SYMMETRY = .FALSE.``)
 * ``--nowritemesh`` (``WRITE_MESH = .FALSE.``)
-* ``--pa``, ``--primitive_axis`` (``PRIMITIVE_AXIS``)
-* ``--pd``, ``--projection_direction`` (``PROJECTION_DIRECTION``)
+* ``--pa``, ``--primitive-axis`` (``PRIMITIVE_AXIS``)
+* ``--pd``, ``--projection-direction`` (``PROJECTION_DIRECTION``)
 * ``--pdos`` (``PDOS``)
-* ``--q_direction`` (``Q_DIRECTION``)
-* ``--readfc`` (``FORCE_CONSTANTS = READ``)
-* ``--show_irreps`` (``SHOW_IRREPS``)
+* ``--pr``, ``--pretend-real`` (``PRETEND_REAL = .TRUE.``)
+* ``--q-direction`` (``Q_DIRECTION``)
+* ``--qpoints`` (``QPOINTS``)
+* ``--qpoints-format`` (``QPOINTS_FORMAT``)
+* ``--readfc`` (``READ_FORCE_CONSTANTS = .TRUE.``)
+* ``--readfc-format`` (``READFC_FORMAT``)
+* ``--read-qpoints`` (``QPOINTS = .TRUE.``)
+* ``--show-irreps`` (``SHOW_IRREPS``)
 * ``--sigma`` (``SIGMA``)
 * ``-t`` (``TPROP``)
 * ``--td`` (``TDISP``)
 * ``--tdm`` (``TDISPMAT``)
-* ``--tdm_cif`` (``TDISPMAT_CIF``)
-* ``--thm``, ``--tetrahedron_method`` (``TETRAHEDRON``)
+* ``--tdm-cif`` (``TDISPMAT_CIF``)
+* ``--thm``, ``--tetrahedron-method`` (``TETRAHEDRON``)
 * ``--tmin`` (``TMIN``)
 * ``--tmax`` (``TMAX``)
 * ``--tstep`` (``TSTEP``)
 * ``--writedm`` (``WRITEDM = .TRUE.``)
-* ``--writefc`` (``FORCE_CONSTANTS = WRITE``)
-* ``--xyz_projection`` (``XYZ_PROJECTION = .TRUE.``)
+* ``--writefc`` (``WRITE_FORCE_CONSTANTS = .TRUE.``)
+* ``--writefc-format`` (``WRITEFC_FORMAT``)
+* ``--xyz-projection`` (``XYZ_PROJECTION = .TRUE.``)
 
 When both of command-line option and setting tag for the same purpose
 are set simultaneously, the command-line options overide the setting
@@ -70,11 +81,11 @@ tags.
 Choice of force calculator
 ---------------------------
 
-Currently interfaces for VASP, Wien2k, Pwscf, Abinit, and Elk are
-prepared. Wien2k, Pwscf, Abinit and Elk interfaces are invoked with
-``--wienk2``, ``--pwscf``, ``--abinit``, and ``--elk`` options,
-respectively, and if none of these options or ``--vasp`` option is
-specified, VASP mode is invoked.
+Currently interfaces for VASP, WIEN2k, Quantum ESPRESSO (QE), ABINIT,
+Elk, SIESTA, and CRYSTAL are prepared. These interfaces are invoked
+with ``--vasp``, ``--wienk2``, ``--qe``, ``--abinit``, ``--elk``,
+``--siesta``, and ``--crystal`` options, respectively, and nothing is
+specified, ``--vasp`` is selected as the default interface.
 
 The details about these interfaces are found at :ref:`calculator_interfaces`.
 
@@ -101,7 +112,7 @@ For previous versions than 1.9.1.3, this option is used as
 ::
 
    % phonopy --wien2k=NaCl.struct band.conf   (version <= 1.9.1.3)
-   
+
 
 .. _abinit_mode:
 
@@ -117,18 +128,19 @@ e.g.,
 
    % phonopy --abinit -c NaCl.in band.conf
 
-.. _pwscf_mode:
+.. _qe_mode:
 
-``--pwscf``
+``--qe``
 ~~~~~~~~~~~~
 
-Pwscf mode is invoked with this option. Usually this option is used
-with ``--cell`` (``-c``) option or ``CELL_FILENAME`` tag to read Pwscf
-input file that contains the unit cell crystal structure, e.g.,
+Quantum ESPRESSO mode is invoked with this option. Usually this option
+is used with ``--cell`` (``-c``) option or ``CELL_FILENAME`` tag to
+read QE/PWscf input file that contains the unit cell crystal structure,
+e.g.,
 
 ::
 
-   % phonopy --pwscf -c NaCl.in band.conf
+   % phonopy --qe -c NaCl.in band.conf
 
 .. _siesta_mode:
 
@@ -148,13 +160,26 @@ input file that contains the unit cell crystal structure, e.g.,
 ``--elk``
 ~~~~~~~~~~~~
 
-Pwscf mode is invoked with this option. Usually this option is used
+Elk mode is invoked with this option. Usually this option is used
 with ``--cell`` (``-c``) option or ``CELL_FILENAME`` tag to read Elk
 input file that contains the unit cell crystal structure, e.g.,
 
 ::
 
    % phonopy --elk -c elk-unitcell.in band.conf
+
+.. _crystal_mode:
+
+``--crystal``
+~~~~~~~~~~~~~
+
+CRYSTAL mode is invoked with this option. Usually this option is used
+with ``--cell`` (``-c``) option or ``CELL_FILENAME`` tag to read a CRYSTAL
+input file that contains the unit cell crystal structure, e.g.,
+
+::
+
+   % phonopy --crystal -c crystal.o band.conf
 
 .. _vasp_mode:
 
@@ -165,9 +190,9 @@ This doesn't change the default behaviour, but ``vasp`` will appear as
 the calculator such as in ``band.yaml``::
 
    calculator: vasp
-   nqpoint: 204    
+   nqpoint: 204
    ...
-  
+
 .. _cell_filename_option:
 
 Input cell
@@ -185,11 +210,12 @@ Unit cell crystal structure file is specified with this tag.
 Without specifying this tag, default file name is searched in current
 directory. The default file names for the calculators are as follows::
 
-   VASP   | POSCAR     
-   Wien2k | case.struct
-   Abinit | unitcell.in
-   Pwscf  | unitcell.in
-   Elk    | elk.in
+   VASP    | POSCAR
+   WIEN2k  | case.struct
+   ABINIT  | unitcell.in
+   PWscf   | unitcell.in
+   Elk     | elk.in
+   CRYSTAL | crystal.o
 
 Create ``FORCE_SETS``
 ----------------------
@@ -228,11 +254,11 @@ Attention:
 
 .. _abinit_force_sets_option:
 
-Abinit interface
+ABINIT interface
 ^^^^^^^^^^^^^^^^
 
-``FORCE_SETS`` file is created from ``disp.yaml`` and Abinit output
-files (``*.out``). In the reading of forces in Abinit output files,
+``FORCE_SETS`` file is created from ``disp.yaml`` and ABINIT output
+files (``*.out``). In the reading of forces in ABINIT output files,
 forces in eV/Angstrom are read. The unit conversion factor is
 determined with this unit.
 
@@ -241,20 +267,21 @@ determined with this unit.
    % phonopy --abinit -f disp-001/supercell.out disp-002/supercell.out  ...
 
 
-.. _pwscf_force_sets_option:
+.. _qe_force_sets_option:
 
-Pwscf interface
-^^^^^^^^^^^^^^^^
+Quantum ESPRESSO interface
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``FORCE_SETS`` file is created from ``disp.yaml`` and Pwscf output
+``FORCE_SETS`` file is created from ``disp.yaml`` and PWscf output
 files.
 
 ::
 
-   % phonopy --pwscf -f disp-001/supercell.out disp-002/supercell.out  ...
+   % phonopy --qe -f disp-001/supercell.out disp-002/supercell.out  ...
 
-Here ``*.out`` files are the saved texts of standard outputs of Pwscf calculations.
-   
+Here ``*.out`` files are the saved texts of standard outputs of PWscf
+calculations.
+
 .. _wien2k_force_sets_option:
 
 WIEN2k interface
@@ -270,7 +297,7 @@ http://www.wien2k.at/reg_user/unsupported/.
 file when creating supercell with displacements, and
 ``case.scf``'s, which are the WIEN2k output files. The order of
 displacements in ``disp.yaml`` file and the order of ``case.scf``'s
-have to be same. **For Wien2k struct file, only negative atom index
+have to be same. **For WIEN2k struct file, only negative atom index
 with the P lattice format is supported.**
 
 ::
@@ -293,6 +320,17 @@ files.
 
    % phonopy --elk -f disp-001/INFO.OUT disp-002/INFO.OUT  ...
 
+.. _crystal_force_sets_option:
+
+CRYSTAL interface
+^^^^^^^^^^^^^^^^^
+
+``FORCE_SETS`` file is created from ``disp.yaml`` and CRYSTAL output
+files.
+
+::
+
+   % phonopy --crystal -f supercell-001.o supercell-002.o  ...
 
 .. _fz_force_sets_option:
 
@@ -311,7 +349,7 @@ to be useful when ``PM = .FALSE.`` is set in the phonopy setting file.
 
 The usage of this option is almost the same as that of ``-f`` option
 except that one more argument is inserted at the front. Mind that
-``--fz`` is exclusively used with ``-f`` option. The example 
+``--fz`` is exclusively used with ``-f`` option. The example
 for the VASP interface is shown below::
 
    % phonopy --fz sposcar/vasprun.xml disp-001/vasprun.xml ...
@@ -386,6 +424,8 @@ No log is shown.
 Crystal symmetry
 -----------------
 
+.. _tolerance_option:
+
 ``--tolerance``
 ~~~~~~~~~~~~~~~
 
@@ -395,6 +435,8 @@ crystal structure. The default value is 1e-5.
 ::
 
    % phonopy --tolerance=1e-3
+
+.. _symmetry_option:
 
 ``--symmetry``
 ~~~~~~~~~~~~~~
@@ -407,46 +449,5 @@ printed out and phonopy stops without going to phonon analysis.
    % phonopy --symmetry
 
 This tag can be used together with the ``--cell`` (``-c``),
-``--abinit``, ``--pwscf``, ``--elk``, ``--wien2k``, or
-``--primitive_axis`` option.
-
-Input/Output file control
--------------------------
-
-.. _hdf5_option:
-
-``--hdf5``
-~~~~~~~~~~~
-
-The following input/output files are read/written in hdf5 format
-instead of their original formats (in parenthesis).
-
-* ``force_constants.hdf5`` (``FORCE_CONSTANTS``)
-* ``mesh.hdf5`` (``mesh.yaml``)
-
-``force_constants.hdf5``
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-With ``--hdf5`` option and ``FORCE_CONSTANTS = WRITE``
-(``--writefc``), ``force_constants.hdf5`` is written.
-With ``--hdf5`` option and ``FORCE_CONSTANTS = READ`` (``--readfc``),
-``force_constants.hdf5`` is read.
-
-``mesh.hdf5``
-^^^^^^^^^^^^^^
-
-In the mesh sampling calculations (see :ref:`mesh_sampling_tags`),
-calculation results are written into ``mesh.hdf5`` but not into
-``mesh.yaml``. Using this option may reduce the data output size and
-thus writing time when ``mesh.yaml`` is huge, e.g., eigenvectors are
-written on a dense sampling mesh.
-
-``qpoints.hdf5``
-^^^^^^^^^^^^^^^^^
-
-In the specific q-points calculations (:ref:`qpoints_tag`),
-calculation results are written into ``qpoints.hdf5`` but not into
-``qpoints.yaml``. With :ref:`writedm_tag`, dynamical matrices are also
-stored in ``qpoints.hdf5``. Using this option may be useful with large
-set of q-points with including eigenvector or dynamical matrix output.
-
+``--abinit``, ``--qe``, ``--elk``, ``--wien2k``, ``--siesta``,
+``--crystal`` or ``--primitive_axis`` option.
